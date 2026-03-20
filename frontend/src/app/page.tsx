@@ -63,7 +63,9 @@ export default function Dashboard() {
       .then((data) => {
         setCircuits(data);
         if (data.length > 0 && !selectedId) {
-          setSelectedId(data[0].id);
+          // Default to Jarama circuit; fall back to first circuit
+          const jarama = data.find((c: Circuit) => c.name.includes("Jarama"));
+          setSelectedId(jarama ? jarama.id : data[0].id);
         }
       })
       .catch((err) => setCircuitsError(err.message));

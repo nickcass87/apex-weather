@@ -125,8 +125,7 @@ export default function CircuitMap({
   const markersLayerRef = useRef<any>(null);
   const precipLayerRef = useRef<any>(null);
   const leafletRef = useRef<any>(null);
-  const precipTileRef = useRef<any>(null);
-  const cloudTileRef = useRef<any>(null);
+  const radarTileRef = useRef<any>(null);
   const [mapReady, setMapReady] = useState(0);
 
   useEffect(() => {
@@ -142,8 +141,7 @@ export default function CircuitMap({
         mapInstanceRef.current = null;
         markersLayerRef.current = null;
         precipLayerRef.current = null;
-        precipTileRef.current = null;
-        cloudTileRef.current = null;
+        radarTileRef.current = null;
       }
 
       if (!mapRef.current) return;
@@ -184,18 +182,20 @@ export default function CircuitMap({
         dashArray: "4,8",
       }).addTo(map);
 
-      // Tomorrow.io weather radar tile layers
-      const tomorrowApiKey = process.env.NEXT_PUBLIC_TOMORROW_API_KEY;
-      if (tomorrowApiKey) {
-        cloudTileRef.current = L.tileLayer(
-          `https://api.tomorrow.io/v4/map/tile/{z}/{x}/{y}/cloudCover/now.png?apikey=${tomorrowApiKey}`,
-          { opacity: 0.35, zIndex: 5 }
-        ).addTo(map);
-
-        precipTileRef.current = L.tileLayer(
-          `https://api.tomorrow.io/v4/map/tile/{z}/{x}/{y}/precipitationIntensity/now.png?apikey=${tomorrowApiKey}`,
-          { opacity: 0.7, zIndex: 10 }
-        ).addTo(map);
+      // RainViewer weather radar tile layer (free, no API key)
+      try {
+        const res = await fetch("https://api.rainviewer.com/public/weather-maps.json");
+        const data = await res.json();
+        const pastFrames = data?.radar?.past;
+        if (pastFrames && pastFrames.length > 0) {
+          const latestPath = pastFrames[pastFrames.length - 1].path;
+          radarTileRef.current = L.tileLayer(
+            `https://tilecache.rainviewer.com${latestPath}/256/{z}/{x}/{y}/8/1_1.png`,
+            { opacity: 0.6, zIndex: 10 }
+          ).addTo(map);
+        }
+      } catch {
+        // RainViewer unavailable — skip radar layer gracefully
       }
 
       precipLayerRef.current = L.layerGroup().addTo(map);
@@ -213,8 +213,7 @@ export default function CircuitMap({
         mapInstanceRef.current = null;
         markersLayerRef.current = null;
         precipLayerRef.current = null;
-        precipTileRef.current = null;
-        cloudTileRef.current = null;
+        radarTileRef.current = null;
       }
     };
   }, [circuit]);

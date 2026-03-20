@@ -34,9 +34,17 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
 
     surface = circuit.surface_type or "standard_asphalt"
 
+    # Only use live Tomorrow.io API for Jarama to conserve free tier API credits.
+    # All other circuits get demo/synthetic data.
+    is_jarama = "Jarama" in (circuit.name or "")
+
     try:
-        current = await weather_service.get_current_weather(circuit.latitude, circuit.longitude)
-        forecast_data = await weather_service.get_forecast(circuit.latitude, circuit.longitude, hours=24)
+        if is_jarama and not weather_service.is_demo_mode:
+            current = await weather_service.get_current_weather(circuit.latitude, circuit.longitude)
+            forecast_data = await weather_service.get_forecast(circuit.latitude, circuit.longitude, hours=24)
+        else:
+            current = WeatherService._generate_demo_current(circuit.latitude, circuit.longitude)
+            forecast_data = WeatherService._generate_demo_forecast(circuit.latitude, circuit.longitude, 24)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Weather provider error: {str(e)}")
 
@@ -53,7 +61,7 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
     confidence = compute_confidence_score(
         weather=current,
         forecast=forecast_data,
-        is_demo_mode=weather_service._demo_mode,
+        is_demo_mode=not is_jarama or weather_service._demo_mode,
     )
 
     # Build response
