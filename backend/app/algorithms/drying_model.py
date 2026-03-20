@@ -153,9 +153,25 @@ def forecast_track_conditions(
     Returns list of hourly condition snapshots.
     """
     conditions = []
-    accumulated_rain_mm = 0.0
     rain_active = False
     rain_start_hour = 0
+
+    # Initialize accumulated rain from CURRENT conditions — don't start at zero
+    # if it's already raining. The current precipitation tells us the track is
+    # already wet before the forecast window begins.
+    current_intensity = weather.precipitation_intensity or 0
+    current_humidity = weather.humidity_pct or 50
+    current_prob = weather.precipitation_probability or 0
+
+    # Estimate how long it's been raining based on current intensity
+    # (conservative: assume at least 30 min of current conditions)
+    if current_intensity > 0.05:
+        accumulated_rain_mm = current_intensity * 0.5  # 30 min of current rate
+        rain_active = True
+    elif current_humidity > 92 and current_prob > 20:
+        accumulated_rain_mm = 0.1  # Trace moisture
+    else:
+        accumulated_rain_mm = 0.0
 
     for i, point in enumerate(forecast[:24]):
         intensity = point.precipitation_intensity or 0
@@ -165,8 +181,13 @@ def forecast_track_conditions(
         humidity = point.humidity_pct or 50
         cloud = point.cloud_cover_pct or 50
 
-        # Track rain accumulation
-        if intensity > 0.1 or prob > 50:
+        # Use the HIGHER of forecast intensity and current intensity for
+        # the first hour (forecast may underreport ongoing precipitation)
+        if i == 0 and current_intensity > intensity:
+            intensity = current_intensity
+
+        # Track rain accumulation — lower threshold to catch drizzle
+        if intensity > 0.05 or prob > 50:
             if not rain_active:
                 rain_start_hour = i
                 rain_active = True
@@ -182,13 +203,15 @@ def forecast_track_conditions(
             evap_per_hour = 0.5 * temp_factor * wind_factor * humidity_factor / surface["drain_rate"]
             accumulated_rain_mm = max(0, accumulated_rain_mm - evap_per_hour)
 
-        # Classify condition
-        effective_intensity = intensity if rain_active else 0
+        # Classify condition — use actual intensity (not gated by rain_active)
+        # Any measurable precipitation should affect the surface condition
+        effective_intensity = intensity if (rain_active or intensity > 0.05) else 0
         condition = classify_track_condition(
             precipitation_intensity=effective_intensity,
             precipitation_probability=prob,
             humidity_pct=humidity,
             air_temp_c=temp,
+            recent_rain_mm=accumulated_rain_mm,
         )
 
         # If there's standing water but no rain, estimate drying
