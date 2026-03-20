@@ -125,6 +125,8 @@ export default function CircuitMap({
   const markersLayerRef = useRef<any>(null);
   const precipLayerRef = useRef<any>(null);
   const leafletRef = useRef<any>(null);
+  const precipTileRef = useRef<any>(null);
+  const cloudTileRef = useRef<any>(null);
   const [mapReady, setMapReady] = useState(0);
 
   useEffect(() => {
@@ -140,6 +142,8 @@ export default function CircuitMap({
         mapInstanceRef.current = null;
         markersLayerRef.current = null;
         precipLayerRef.current = null;
+        precipTileRef.current = null;
+        cloudTileRef.current = null;
       }
 
       if (!mapRef.current) return;
@@ -180,6 +184,20 @@ export default function CircuitMap({
         dashArray: "4,8",
       }).addTo(map);
 
+      // Tomorrow.io weather radar tile layers
+      const tomorrowApiKey = process.env.NEXT_PUBLIC_TOMORROW_API_KEY;
+      if (tomorrowApiKey) {
+        cloudTileRef.current = L.tileLayer(
+          `https://api.tomorrow.io/v4/map/tile/{z}/{x}/{y}/cloudCover/now.png?apikey=${tomorrowApiKey}`,
+          { opacity: 0.35, zIndex: 5 }
+        ).addTo(map);
+
+        precipTileRef.current = L.tileLayer(
+          `https://api.tomorrow.io/v4/map/tile/{z}/{x}/{y}/precipitationIntensity/now.png?apikey=${tomorrowApiKey}`,
+          { opacity: 0.7, zIndex: 10 }
+        ).addTo(map);
+      }
+
       precipLayerRef.current = L.layerGroup().addTo(map);
       markersLayerRef.current = L.layerGroup().addTo(map);
       mapInstanceRef.current = map;
@@ -195,6 +213,8 @@ export default function CircuitMap({
         mapInstanceRef.current = null;
         markersLayerRef.current = null;
         precipLayerRef.current = null;
+        precipTileRef.current = null;
+        cloudTileRef.current = null;
       }
     };
   }, [circuit]);
@@ -226,100 +246,7 @@ export default function CircuitMap({
 
     const windSpeed = forecast.speed_kmh;
     const windDir = forecast.direction_deg;
-    const intensity = forecast.precipitation_intensity ?? 0;
-
-    // Cloud cover layer — organic cloud shapes across the map
-    const cloudCover = forecast.cloud_cover_pct ?? 0;
     const cosLat = Math.cos(circuit.latitude * Math.PI / 180);
-    const directionDeg = windDir;
-
-    if (cloudCover > 30) {
-      const cloudOpacity = 0.03 + (cloudCover / 100) * 0.12;
-      const cloudCount = 6;
-      for (let i = 0; i < cloudCount; i++) {
-        // Deterministic "random" offsets based on index
-        const offsetX = Math.sin(i * 2.4) * 3000;
-        const offsetY = Math.cos(i * 3.1) * 3000;
-        const radius = 2000 + Math.abs(Math.sin(i * 1.7)) * 3000;
-        const cloudLat = circuit.latitude + offsetY / 111320;
-        const cloudLng = circuit.longitude + offsetX / (111320 * cosLat);
-
-        L.circle([cloudLat, cloudLng], {
-          radius,
-          fillColor: "#94a3b8",
-          fillOpacity: cloudOpacity,
-          color: "#94a3b8",
-          weight: 0,
-          opacity: 0,
-        }).addTo(precipLayer);
-      }
-    }
-
-    // Rain overlay — organic rain cell with multiple overlapping circles
-    if (intensity > 0) {
-      const rainColor =
-        intensity > 5 ? "#a855f7" :
-        intensity > 2 ? "#6366f1" :
-        intensity > 0.5 ? "#3b82f6" :
-        "#22d3ee";
-      const rainOpacity = 0.12 + Math.min(intensity / 8, 0.28);
-      const rainRadius = 3000 + Math.min(intensity * 1500, 7000);
-      const rainCircleCount = 4;
-
-      for (let i = 0; i < rainCircleCount; i++) {
-        const offsetX = Math.sin(i * 2.4) * 2000;
-        const offsetY = Math.cos(i * 3.1) * 2000;
-        const thisRadius = rainRadius * (0.7 + Math.abs(Math.sin(i * 1.9)) * 0.3);
-        const rainLat = circuit.latitude + offsetY / 111320;
-        const rainLng = circuit.longitude + offsetX / (111320 * cosLat);
-
-        L.circle([rainLat, rainLng], {
-          radius: thisRadius,
-          fillColor: rainColor,
-          fillOpacity: rainOpacity * (0.7 + Math.abs(Math.cos(i * 2.7)) * 0.3),
-          color: rainColor,
-          weight: 0,
-          opacity: 0,
-        }).addTo(precipLayer);
-      }
-
-      // Rain movement streaks — 12 polylines spread across the rain cell
-      const streakCount = 12;
-      const windToRad = ((directionDeg + 180) % 360) * Math.PI / 180;
-      for (let i = 0; i < streakCount; i++) {
-        // Deterministic spread across the rain cell area
-        const spreadX = Math.sin(i * 2.4 + 0.5) * rainRadius * 0.8;
-        const spreadY = Math.cos(i * 3.1 + 0.5) * rainRadius * 0.8;
-        const streakLen = 800 + Math.abs(Math.sin(i * 1.7)) * 1200;
-        const streakWeight = 2 + Math.abs(Math.cos(i * 2.3));
-        const streakOpacity = 0.3 + Math.abs(Math.sin(i * 1.4)) * 0.3;
-
-        const startLat = circuit.latitude + spreadY / 111320;
-        const startLng = circuit.longitude + spreadX / (111320 * cosLat);
-        const endLat = startLat + (Math.cos(windToRad) * streakLen) / 111320;
-        const endLng = startLng + (Math.sin(windToRad) * streakLen) / (111320 * cosLat);
-
-        L.polyline([[startLat, startLng], [endLat, endLng]], {
-          color: rainColor,
-          weight: streakWeight,
-          opacity: streakOpacity,
-          dashArray: "6,4",
-        }).addTo(precipLayer);
-      }
-
-      // Rain cell boundary — dashed circle outline
-      if (intensity > 0.3) {
-        L.circle([circuit.latitude, circuit.longitude], {
-          radius: rainRadius,
-          fillColor: "transparent",
-          fillOpacity: 0,
-          color: rainColor,
-          weight: 1.5,
-          opacity: 0.25,
-          dashArray: "8, 6",
-        }).addTo(precipLayer);
-      }
-    }
 
     // Cloud/wind movement arrow — large arrow showing wind direction across the map
     if (windSpeed > 1) {
