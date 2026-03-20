@@ -1,7 +1,9 @@
 import { Circuit, WeatherResponse } from "@/types";
 
-// Use Next.js API route proxy to reach the backend server-side
-const API_BASE = "/api/proxy";
+// Call backend directly — NEXT_PUBLIC_API_URL is inlined at build time
+const BACKEND =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = `${BACKEND}/api/v1`;
 
 async function fetchApi<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
