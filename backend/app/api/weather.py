@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 import uuid
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -38,15 +41,22 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
     # All other circuits get demo/synthetic data.
     is_jarama = "Jarama" in (circuit.name or "")
 
-    try:
-        if is_jarama and not weather_service.is_demo_mode:
+    use_demo = not is_jarama or weather_service.is_demo_mode
+
+    if use_demo:
+        current = WeatherService._generate_demo_current(circuit.latitude, circuit.longitude)
+        forecast_data = WeatherService._generate_demo_forecast(circuit.latitude, circuit.longitude, 24)
+    else:
+        try:
             current = await weather_service.get_current_weather(circuit.latitude, circuit.longitude)
             forecast_data = await weather_service.get_forecast(circuit.latitude, circuit.longitude, hours=24)
-        else:
+        except Exception as e:
+            # Graceful fallback: if API is rate-limited (429) or fails,
+            # serve demo data rather than showing an error to the user.
+            logger.warning("Tomorrow.io API error for %s, falling back to demo: %s", circuit.name, e)
             current = WeatherService._generate_demo_current(circuit.latitude, circuit.longitude)
             forecast_data = WeatherService._generate_demo_forecast(circuit.latitude, circuit.longitude, 24)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Weather provider error: {str(e)}")
+            use_demo = True
 
     # Compute track temperature with surface type
     track_temp = weather_service.compute_track_temperature(current, surface_type=surface)
@@ -61,7 +71,7 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
     confidence = compute_confidence_score(
         weather=current,
         forecast=forecast_data,
-        is_demo_mode=not is_jarama or weather_service._demo_mode,
+        is_demo_mode=use_demo,
     )
 
     # Build response
