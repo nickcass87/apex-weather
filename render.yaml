@@ -1,0 +1,21 @@
+# Render Blueprint — deploy backend as a web service
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: apex-weather-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run.py
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: DATABASE_URL
+        value: sqlite:///./apex_weather.db
+      - key: TOMORROW_API_KEY
+        sync: false  # set manually in Render dashboard
+      - key: BACKEND_CORS_ORIGINS
+        value: https://apex-weather.netlify.app,http://localhost:3000
+    plan: free
+    healthCheckPath: /health

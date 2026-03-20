@@ -1,0 +1,199 @@
+@import "tailwindcss";
+
+:root {
+  /* Backgrounds — layered warm darks */
+  --bg-primary: #0b0a0e;
+  --bg-secondary: #121118;
+  --bg-card: #18161e;
+  --bg-card-hover: #1f1d26;
+  --bg-elevated: #252330;
+  --bg-inset: #0e0d12;
+
+  /* Borders — barely-visible warm tints */
+  --border-color: #221f2a;
+  --border-accent: #332f3e;
+  --border-subtle: #1a1822;
+
+  /* Text — warm cream spectrum */
+  --text-primary: #ede9e0;
+  --text-secondary: #9a9490;
+  --text-tertiary: #5e5852;
+  --text-muted: #6a645e;
+
+  /* Accents — warm, desaturated */
+  --accent-amber: #d4a04a;
+  --accent-green: #4aad7c;
+  --accent-yellow: #d9af42;
+  --accent-red: #bf5858;
+  --accent-blue: #5a9dba;
+  --accent-cyan: #5aacb8;
+
+  /* Brand — warm copper/amber */
+  --brand-primary: #d4a04a;
+  --brand-highlight: #e0b65c;
+  --brand-glow: rgba(212, 160, 74, 0.10);
+
+  /* Shadows */
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.02) inset;
+  --shadow-elevated: 0 4px 16px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03) inset;
+  --shadow-glow: 0 0 30px rgba(212, 160, 74, 0.06);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-feature-settings: 'cv01', 'cv02', 'ss01';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Section headings */
+.section-heading {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* Wind corner markers */
+.wind-corner-marker {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Inputs — warm focus ring */
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+}
+
+/* Range slider */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 2px;
+  outline: none;
+  background: var(--border-color);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--brand-primary);
+  cursor: pointer;
+  border: 2px solid var(--bg-primary);
+  box-shadow: 0 0 8px rgba(212, 160, 74, 0.4);
+  transition: box-shadow 0.15s ease;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 14px rgba(212, 160, 74, 0.5);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--brand-primary);
+  cursor: pointer;
+  border: 2px solid var(--bg-primary);
+  box-shadow: 0 0 8px rgba(212, 160, 74, 0.4);
+}
+
+/* Select elements */
+select {
+  background-color: var(--bg-inset);
+}
+select option {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+select optgroup {
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+/* Tabular numbers */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Premium scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-accent);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Utility: soft amber glow for hero cards */
+.glow-amber {
+  box-shadow: var(--shadow-card), 0 0 40px rgba(212, 160, 74, 0.05);
+}
+
+/* Utility: glass card surface */
+.glass-card {
+  background: linear-gradient(160deg, rgba(24, 22, 30, 0.85) 0%, rgba(18, 17, 24, 0.65) 100%);
+  border: 1px solid var(--border-color);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-card);
+}
+
+/* Utility: data card (standard panel) */
+.data-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+}
+
+/* Utility: inset well for nested content */
+.inset-well {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+}
+
+/* Tooltip/popover for map */
+.leaflet-popup-content-wrapper {
+  background: var(--bg-elevated) !important;
+  color: var(--text-primary) !important;
+  border-radius: 8px !important;
+  box-shadow: var(--shadow-elevated) !important;
+}
+.leaflet-popup-tip {
+  background: var(--bg-elevated) !important;
+}
+
+/* Animate utility */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px rgba(74, 173, 124, 0.4); }
+  50% { opacity: 0.5; box-shadow: 0 0 8px rgba(74, 173, 124, 0.6); }
+}
+.live-dot {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
