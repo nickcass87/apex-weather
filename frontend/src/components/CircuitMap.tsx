@@ -228,52 +228,95 @@ export default function CircuitMap({
     const windDir = forecast.direction_deg;
     const intensity = forecast.precipitation_intensity ?? 0;
 
-    // Precipitation overlay — colored translucent circle over circuit area
-    if (intensity >= 0.05) {
-      const color = precipColor(intensity);
-      // Opacity scales with intensity: drizzle=0.08, light=0.12, moderate=0.18, heavy=0.25
-      const opacity = Math.min(0.25, 0.06 + (Math.min(intensity, 10) / 10) * 0.2);
-      const radius = Math.min(8000, 2000 + intensity * 600);
+    // Cloud cover layer — organic cloud shapes across the map
+    const cloudCover = forecast.cloud_cover_pct ?? 0;
+    const cosLat = Math.cos(circuit.latitude * Math.PI / 180);
+    const directionDeg = windDir;
 
-      L.circle([circuit.latitude, circuit.longitude], {
-        radius,
-        fillColor: color,
-        fillOpacity: opacity,
-        color: color,
-        weight: 1.5,
-        opacity: 0.3,
-      }).addTo(precipLayer);
+    if (cloudCover > 30) {
+      const cloudOpacity = 0.03 + (cloudCover / 100) * 0.12;
+      const cloudCount = 6;
+      for (let i = 0; i < cloudCount; i++) {
+        // Deterministic "random" offsets based on index
+        const offsetX = Math.sin(i * 2.4) * 3000;
+        const offsetY = Math.cos(i * 3.1) * 3000;
+        const radius = 2000 + Math.abs(Math.sin(i * 1.7)) * 3000;
+        const cloudLat = circuit.latitude + offsetY / 111320;
+        const cloudLng = circuit.longitude + offsetX / (111320 * cosLat);
 
-      // Inner pulse ring for active rain
-      if (intensity >= 0.5) {
-        L.circle([circuit.latitude, circuit.longitude], {
-          radius: radius * 0.5,
-          fillColor: color,
-          fillOpacity: opacity * 0.6,
-          color: color,
-          weight: 0.5,
-          opacity: 0.15,
+        L.circle([cloudLat, cloudLng], {
+          radius,
+          fillColor: "#94a3b8",
+          fillOpacity: cloudOpacity,
+          color: "#94a3b8",
+          weight: 0,
+          opacity: 0,
+        }).addTo(precipLayer);
+      }
+    }
+
+    // Rain overlay — organic rain cell with multiple overlapping circles
+    if (intensity > 0) {
+      const rainColor =
+        intensity > 5 ? "#a855f7" :
+        intensity > 2 ? "#6366f1" :
+        intensity > 0.5 ? "#3b82f6" :
+        "#22d3ee";
+      const rainOpacity = 0.12 + Math.min(intensity / 8, 0.28);
+      const rainRadius = 3000 + Math.min(intensity * 1500, 7000);
+      const rainCircleCount = 4;
+
+      for (let i = 0; i < rainCircleCount; i++) {
+        const offsetX = Math.sin(i * 2.4) * 2000;
+        const offsetY = Math.cos(i * 3.1) * 2000;
+        const thisRadius = rainRadius * (0.7 + Math.abs(Math.sin(i * 1.9)) * 0.3);
+        const rainLat = circuit.latitude + offsetY / 111320;
+        const rainLng = circuit.longitude + offsetX / (111320 * cosLat);
+
+        L.circle([rainLat, rainLng], {
+          radius: thisRadius,
+          fillColor: rainColor,
+          fillOpacity: rainOpacity * (0.7 + Math.abs(Math.cos(i * 2.7)) * 0.3),
+          color: rainColor,
+          weight: 0,
+          opacity: 0,
         }).addTo(precipLayer);
       }
 
-      // Precipitation movement streaks (show direction rain is coming FROM)
-      const precipStreakCount = intensity >= 2.5 ? 5 : intensity >= 0.5 ? 3 : 2;
-      const windToRad = ((windDir + 180) % 360) * Math.PI / 180; // direction wind blows TO
-      for (let s = 0; s < precipStreakCount; s++) {
-        const angleOffset = ((s - (precipStreakCount - 1) / 2) * 15) * Math.PI / 180;
-        const streakAngle = windToRad + angleOffset;
-        const dist = radius * (0.3 + Math.random() * 0.5);
-        const streakLen = radius * (0.15 + intensity * 0.03);
-        const startLat = circuit.latitude + (Math.cos(streakAngle) * dist) / 111320;
-        const startLng = circuit.longitude + (Math.sin(streakAngle) * dist) / (111320 * Math.cos(circuit.latitude * Math.PI / 180));
-        const endLat = startLat + (Math.cos(streakAngle) * streakLen) / 111320;
-        const endLng = startLng + (Math.sin(streakAngle) * streakLen) / (111320 * Math.cos(circuit.latitude * Math.PI / 180));
+      // Rain movement streaks — 12 polylines spread across the rain cell
+      const streakCount = 12;
+      const windToRad = ((directionDeg + 180) % 360) * Math.PI / 180;
+      for (let i = 0; i < streakCount; i++) {
+        // Deterministic spread across the rain cell area
+        const spreadX = Math.sin(i * 2.4 + 0.5) * rainRadius * 0.8;
+        const spreadY = Math.cos(i * 3.1 + 0.5) * rainRadius * 0.8;
+        const streakLen = 800 + Math.abs(Math.sin(i * 1.7)) * 1200;
+        const streakWeight = 2 + Math.abs(Math.cos(i * 2.3));
+        const streakOpacity = 0.3 + Math.abs(Math.sin(i * 1.4)) * 0.3;
+
+        const startLat = circuit.latitude + spreadY / 111320;
+        const startLng = circuit.longitude + spreadX / (111320 * cosLat);
+        const endLat = startLat + (Math.cos(windToRad) * streakLen) / 111320;
+        const endLng = startLng + (Math.sin(windToRad) * streakLen) / (111320 * cosLat);
 
         L.polyline([[startLat, startLng], [endLat, endLng]], {
-          color: color,
+          color: rainColor,
+          weight: streakWeight,
+          opacity: streakOpacity,
+          dashArray: "6,4",
+        }).addTo(precipLayer);
+      }
+
+      // Rain cell boundary — dashed circle outline
+      if (intensity > 0.3) {
+        L.circle([circuit.latitude, circuit.longitude], {
+          radius: rainRadius,
+          fillColor: "transparent",
+          fillOpacity: 0,
+          color: rainColor,
           weight: 1.5,
-          opacity: 0.35,
-          dashArray: "4,6",
+          opacity: 0.25,
+          dashArray: "8, 6",
         }).addTo(precipLayer);
       }
     }
@@ -282,7 +325,6 @@ export default function CircuitMap({
     if (windSpeed > 1) {
       const arrowLen = Math.min(0.06, 0.02 + windSpeed * 0.001); // degrees offset
       const windToRad = ((windDir + 180) % 360) * Math.PI / 180;
-      const cosLat = Math.cos(circuit.latitude * Math.PI / 180);
       // Arrow starts upwind of circuit, ends downwind
       const startLat = circuit.latitude - Math.cos(windToRad) * arrowLen;
       const startLng = circuit.longitude - (Math.sin(windToRad) * arrowLen) / cosLat;

@@ -111,6 +111,7 @@ class WindForecastPoint(BaseModel):
     # Precipitation overlay data
     precipitation_intensity: float = 0
     precipitation_probability: float = 0
+    cloud_cover_pct: Optional[float] = None
     track_condition: str = "dry"
 
 

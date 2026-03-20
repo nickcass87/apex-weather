@@ -313,6 +313,7 @@ def forecast_wind_analysis(
         # Include precipitation data for map overlay
         precip_intensity = point.precipitation_intensity or 0
         precip_prob = point.precipitation_probability or 0
+        cloud_cover = point.cloud_cover_pct
 
         # Get track condition from pre-computed conditions if available
         condition = "dry"
@@ -330,6 +331,7 @@ def forecast_wind_analysis(
             "crosswind_direction": components["crosswind_direction"],
             "precipitation_intensity": round(precip_intensity, 2),
             "precipitation_probability": round(precip_prob, 0),
+            "cloud_cover_pct": round(cloud_cover, 0) if cloud_cover is not None else None,
             "track_condition": condition,
         })
 

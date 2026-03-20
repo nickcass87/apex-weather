@@ -117,6 +117,7 @@ export interface WindForecastPoint {
   crosswind_direction: string;
   precipitation_intensity: number;
   precipitation_probability: number;
+  cloud_cover_pct: number | null;
   track_condition: string;
 }
 

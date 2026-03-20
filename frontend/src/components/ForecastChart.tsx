@@ -91,25 +91,32 @@ export default function ForecastChart({ forecast, sessions, timeRange }: Props) 
         ))}
         {points.map((point, i) => {
           const temp = point.temperature_c ?? 0;
-          const height = ((temp - minTemp) / tempRange) * 80 + 20;
+          const height = ((temp - minTemp) / tempRange) * 65 + 35;
           const rainProb = point.precipitation_probability ?? 0;
+          const intensity = point.precipitation_intensity ?? 0;
+          const isRaining = intensity > 0.1;
+          const rainSignal = isRaining ? Math.max(rainProb, 60) : rainProb;
 
           return (
             <div key={i} className="flex-1 flex flex-col items-center gap-1">
               <span className="text-[8px] text-[var(--text-muted)] tabular-nums">
-                {rainProb > 0 ? `${rainProb.toFixed(0)}%` : ""}
+                {isRaining
+                  ? `${intensity.toFixed(1)}mm`
+                  : rainProb > 0
+                    ? `${rainProb.toFixed(0)}%`
+                    : ""}
               </span>
               <div
                 className="w-full rounded-t-sm"
                 style={{
                   height: `${height}%`,
                   backgroundColor:
-                    rainProb > 60
+                    rainSignal > 60
                       ? "var(--accent-blue)"
-                      : rainProb > 30
+                      : rainSignal > 30
                         ? "var(--accent-yellow)"
                         : "var(--accent-green)",
-                  opacity: 0.5 + (rainProb / 100) * 0.4,
+                  opacity: 0.65 + (rainSignal / 100) * 0.35,
                 }}
               />
               <span className="text-[9px] text-[var(--text-tertiary)] tabular-nums font-medium">
@@ -161,6 +168,7 @@ export default function ForecastChart({ forecast, sessions, timeRange }: Props) 
         <span className="flex items-center gap-1"><span className="w-[5px] h-[5px] rounded-full bg-[var(--accent-green)]" />Dry</span>
         <span className="flex items-center gap-1"><span className="w-[5px] h-[5px] rounded-full bg-[var(--accent-yellow)]" />Possible</span>
         <span className="flex items-center gap-1"><span className="w-[5px] h-[5px] rounded-full bg-[var(--accent-blue)]" />Likely rain</span>
+        <span className="flex items-center gap-1"><span className="w-[5px] h-[5px] rounded-full bg-[var(--accent-blue)] ring-1 ring-[var(--accent-blue)]" />Active rain</span>
       </div>
     </div>
   );

@@ -141,7 +141,10 @@ export default function RainIntensityChart({ forecast, sessions, timeRange }: Pr
                     style={{
                       height: `${barPct}%`,
                       backgroundColor: getIntensityColor(intensity),
-                      opacity: intensity < 0.1 ? 0.2 : 0.4 + (probability / 100) * 0.5,
+                      opacity:
+                        intensity < 0.1
+                          ? 0.2
+                          : Math.max(0.6, 0.6 + (intensity / maxIntensity) * 0.4),
                     }}
                     title={`${new Date(point.forecast_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} — ${intensity.toFixed(1)} mm/hr (${getIntensityLabel(intensity)}) | ${probability.toFixed(0)}%`}
                   />
@@ -188,7 +191,7 @@ export default function RainIntensityChart({ forecast, sessions, timeRange }: Pr
           <span className="w-[5px] h-[5px] rounded-full inline-block" style={{ backgroundColor: "var(--accent-red)" }} />
           Heavy
         </span>
-        <span className="text-[var(--text-muted)] opacity-60">opacity = probability</span>
+        <span className="text-[var(--text-muted)] opacity-60">opacity = intensity</span>
       </div>
     </div>
   );
