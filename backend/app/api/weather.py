@@ -87,6 +87,10 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
             cloud_cover_pct=fp.cloud_cover_pct or 0,
             humidity_pct=fp.humidity_pct or 50,
             surface_type=surface,
+            latitude=circuit.latitude,
+            longitude=circuit.longitude,
+            forecast_time=fp.forecast_time,
+            precipitation_intensity=fp.precipitation_intensity or 0,
         )
         track_temps.append(ft_track_temp)
         forecast_out.append(WeatherForecastPoint(

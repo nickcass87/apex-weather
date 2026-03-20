@@ -106,7 +106,7 @@ class WeatherService:
         """Rough solar radiation estimate from cloud cover and UV index."""
         base = 800.0
         cloud_factor = 1.0 - ((weather.cloud_cover_pct or 0) / 100.0) * 0.7
-        uv_factor = min((weather.uv_index or 5) / 10.0, 1.0)
+        uv_factor = min((weather.uv_index or 0) / 10.0, 1.0)
         return base * cloud_factor * uv_factor
 
     @staticmethod
