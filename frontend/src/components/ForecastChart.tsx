@@ -94,31 +94,53 @@ export default function ForecastChart({ forecast, sessions, timeRange }: Props) 
           const height = ((temp - minTemp) / tempRange) * 65 + 35;
           const rainProb = point.precipitation_probability ?? 0;
           const intensity = point.precipitation_intensity ?? 0;
-          const isRaining = intensity > 0.1;
-          const rainSignal = isRaining ? Math.max(rainProb, 60) : rainProb;
+          const isRaining = intensity > 0.05;
+          const isLikelyRain = rainProb >= 40;
+
+          // Determine bar color — make rain unmissable
+          let barColor = "var(--accent-green)";
+          let barOpacity = 0.6;
+          if (isRaining) {
+            barColor = "#3b82f6"; // bright blue
+            barOpacity = 0.85;
+          } else if (isLikelyRain) {
+            barColor = "#f59e0b"; // amber
+            barOpacity = 0.75;
+          } else if (rainProb > 15) {
+            barColor = "#a3e635"; // yellow-green
+            barOpacity = 0.65;
+          }
 
           return (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1">
-              <span className="text-[8px] text-[var(--text-muted)] tabular-nums">
+            <div key={i} className="flex-1 flex flex-col items-center gap-0.5 relative">
+              {/* Rain intensity label */}
+              <span className="text-[8px] tabular-nums font-medium" style={{
+                color: isRaining ? "#60a5fa" : rainProb > 0 ? "var(--text-muted)" : "transparent",
+              }}>
                 {isRaining
                   ? `${intensity.toFixed(1)}mm`
                   : rainProb > 0
                     ? `${rainProb.toFixed(0)}%`
-                    : ""}
+                    : "\u00A0"}
               </span>
-              <div
-                className="w-full rounded-t-sm"
-                style={{
-                  height: `${height}%`,
-                  backgroundColor:
-                    rainSignal > 60
-                      ? "var(--accent-blue)"
-                      : rainSignal > 30
-                        ? "var(--accent-yellow)"
-                        : "var(--accent-green)",
-                  opacity: 0.65 + (rainSignal / 100) * 0.35,
-                }}
-              />
+              {/* Temperature bar */}
+              <div className="w-full relative" style={{ height: `${height}%` }}>
+                <div
+                  className="w-full h-full rounded-t-sm"
+                  style={{ backgroundColor: barColor, opacity: barOpacity }}
+                />
+                {/* Rain intensity overlay: blue strip at bottom of bar */}
+                {isRaining && (
+                  <div
+                    className="absolute bottom-0 left-0 w-full rounded-t-sm"
+                    style={{
+                      height: `${Math.min(Math.max(intensity / 2 * 100, 15), 60)}%`,
+                      background: "linear-gradient(to top, #2563eb, #3b82f6)",
+                      opacity: 0.9,
+                    }}
+                  />
+                )}
+              </div>
               <span className="text-[9px] text-[var(--text-tertiary)] tabular-nums font-medium">
                 {temp.toFixed(0)}°
               </span>
