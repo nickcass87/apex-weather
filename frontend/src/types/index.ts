@@ -164,3 +164,27 @@ export interface WeatherResponse {
   wind_forecast: WindForecastPoint[];
   circuit_corners: CircuitCorner[];
 }
+
+// ── Multi-model comparison ──
+
+export interface ModelForecastPoint {
+  time: string;
+  temp_c: number;
+  precip_mm: number;
+  wind_kmh: number;
+  wind_dir: number;
+  cloud_pct: number;
+}
+
+export interface ModelComparison {
+  model_id: string;
+  label: string;
+  provider: string;
+  color: string;
+  points: ModelForecastPoint[];
+}
+
+export interface ModelComparisonResponse {
+  fetched_at: string;
+  models: ModelComparison[];
+}

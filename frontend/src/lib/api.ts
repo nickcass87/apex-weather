@@ -1,4 +1,4 @@
-import { Circuit, WeatherResponse } from "@/types";
+import { Circuit, WeatherResponse, ModelComparisonResponse } from "@/types";
 
 // Call backend directly — NEXT_PUBLIC_API_URL is inlined at build time
 const BACKEND =
@@ -25,4 +25,8 @@ export async function getCircuit(id: string): Promise<Circuit> {
 
 export async function getWeather(circuitId: string): Promise<WeatherResponse> {
   return fetchApi<WeatherResponse>(`/weather/${circuitId}`);
+}
+
+export async function getModelComparison(circuitId: string): Promise<ModelComparisonResponse> {
+  return fetchApi<ModelComparisonResponse>(`/weather/${circuitId}/models`);
 }

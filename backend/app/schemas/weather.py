@@ -158,3 +158,27 @@ class AlertOut(BaseModel):
 
 # Resolve forward reference
 WeatherResponse.model_rebuild()
+
+
+# ── Multi-model comparison schemas ──
+
+class ModelForecastPoint(BaseModel):
+    time: str
+    temp_c: float = 0
+    precip_mm: float = 0
+    wind_kmh: float = 0
+    wind_dir: float = 0
+    cloud_pct: float = 0
+
+
+class ModelComparison(BaseModel):
+    model_id: str
+    label: str
+    provider: str
+    color: str
+    points: List[ModelForecastPoint] = []
+
+
+class ModelComparisonResponse(BaseModel):
+    fetched_at: str
+    models: List[ModelComparison] = []

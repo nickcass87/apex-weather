@@ -15,8 +15,10 @@ from app.schemas.weather import (
     WeatherResponse, WeatherCurrent, WeatherForecastPoint, AlertOut,
     WindAnalysis, TrackConditionPoint, DryingEstimate, StrategyPoint,
     GripEstimate, WindForecastPoint, CircuitCorner,
+    ModelComparisonResponse, ModelComparison, ModelForecastPoint,
 )
 from app.services.weather_service import WeatherService
+from app.services.open_meteo import fetch_multi_model
 from app.algorithms.track_temperature import estimate_track_temp_from_forecast
 from app.algorithms.confidence import compute_confidence_score
 from app.algorithms.wind_analysis import analyze_wind, forecast_wind_analysis, get_circuit_corners
@@ -228,4 +230,30 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
         grip=grip_out,
         wind_forecast=wind_forecast_out,
         circuit_corners=corners_out,
+    )
+
+
+@router.get("/{circuit_id}/models", response_model=ModelComparisonResponse)
+async def get_model_comparison(circuit_id: str, db: Session = Depends(get_db)):
+    """Multi-model forecast comparison from Open-Meteo (ECMWF, GFS, ICON)."""
+    circuit = db.query(Circuit).filter(Circuit.id == circuit_id).first()
+    if not circuit:
+        raise HTTPException(status_code=404, detail="Circuit not found")
+
+    raw = await fetch_multi_model(circuit.latitude, circuit.longitude, hours=24)
+
+    models_out = []
+    for m in raw.get("models", []):
+        points = [ModelForecastPoint(**p) for p in m.get("points", [])]
+        models_out.append(ModelComparison(
+            model_id=m["model_id"],
+            label=m["label"],
+            provider=m["provider"],
+            color=m["color"],
+            points=points,
+        ))
+
+    return ModelComparisonResponse(
+        fetched_at=raw.get("fetched_at", ""),
+        models=models_out,
     )

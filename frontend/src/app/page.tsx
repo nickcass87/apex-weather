@@ -15,6 +15,7 @@ import CircuitMap from "@/components/CircuitMap";
 import ConfidenceIndicator from "@/components/ConfidenceIndicator";
 import TrackTempChart from "@/components/TrackTempChart";
 import RainIntensityChart from "@/components/RainIntensityChart";
+import ModelComparisonPanel from "@/components/ModelComparisonPanel";
 import WindAnalysisPanel from "@/components/WindAnalysisPanel";
 import SurfaceConditionsPanel from "@/components/SurfaceConditionsPanel";
 import GripIndicator from "@/components/GripIndicator";
@@ -49,7 +50,7 @@ export default function Dashboard() {
   const [panOffsetMs, setPanOffsetMs] = useState(0);
 
   const selectedCircuit = circuits.find((c) => c.id === selectedId) || null;
-  const { weather, loading, error, refetch } = useWeather(selectedId);
+  const { weather, modelComparison, loading, error, refetch } = useWeather(selectedId);
   const { sessions, addSession, removeSession } = useLocalSessions(selectedId);
 
   useEffect(() => {
@@ -344,6 +345,11 @@ export default function Dashboard() {
                 />
               </div>
             </div>
+          )}
+
+          {/* Model Comparison Panel */}
+          {modelComparison && modelComparison.models.length > 0 && (
+            <ModelComparisonPanel data={modelComparison} timeRange={timeRange} />
           )}
         </div>
       </main>
