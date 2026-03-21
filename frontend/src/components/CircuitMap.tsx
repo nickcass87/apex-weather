@@ -190,8 +190,15 @@ export default function CircuitMap({
         if (pastFrames && pastFrames.length > 0) {
           const latestPath = pastFrames[pastFrames.length - 1].path;
           radarTileRef.current = L.tileLayer(
-            `https://tilecache.rainviewer.com${latestPath}/256/{z}/{x}/{y}/8/1_1.png`,
-            { opacity: 0.6, zIndex: 10 }
+            `https://tilecache.rainviewer.com${latestPath}/512/{z}/{x}/{y}/8/1_1.png`,
+            {
+              opacity: 0.55,
+              zIndex: 10,
+              tileSize: 512,
+              zoomOffset: -1,
+              maxNativeZoom: 12,
+              maxZoom: 19,
+            }
           ).addTo(map);
         }
       } catch {
