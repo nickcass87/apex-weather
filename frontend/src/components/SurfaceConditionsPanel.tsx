@@ -135,6 +135,40 @@ export default function SurfaceConditionsPanel({ conditions, drying, surfaceType
   // Adaptive time axis ticks
   const ticks = timeRange.startMs > 0 ? generateTicks(timeRange.startMs, timeRange.endMs) : [];
 
+  // Forecast-aware drying estimates: scan the conditions timeline to find when
+  // the track actually becomes damp/dry, accounting for future rain.
+  const forecastDampMin = (() => {
+    if (isDry || conditions.length < 2) return 0;
+    const nowMs = new Date(conditions[0].forecast_time).getTime();
+    // Find first transition to "dry" or "damp" from a worse condition
+    for (let i = 1; i < conditions.length; i++) {
+      if (conditions[i].condition === "damp" && (currentCondition === "wet" || currentCondition === "very_wet" || currentCondition === "flooded")) {
+        return Math.round((new Date(conditions[i].forecast_time).getTime() - nowMs) / 60000);
+      }
+    }
+    return 0;
+  })();
+
+  const forecastDryMin = (() => {
+    if (isDry || conditions.length < 2) return 0;
+    const nowMs = new Date(conditions[0].forecast_time).getTime();
+    for (let i = 1; i < conditions.length; i++) {
+      if (conditions[i].condition === "dry") {
+        return Math.round((new Date(conditions[i].forecast_time).getTime() - nowMs) / 60000);
+      }
+    }
+    return 0; // never reaches dry within forecast window
+  })();
+
+  // Format minutes as hours + minutes when > 90 min
+  const fmtTime = (mins: number) => {
+    if (mins <= 0) return null;
+    if (mins < 90) return `${mins} min`;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+  };
+
   return (
     <div className="data-card p-4">
       <h3 className="section-heading mb-3">Surface Conditions</h3>
@@ -162,19 +196,26 @@ export default function SurfaceConditionsPanel({ conditions, drying, surfaceType
               <div className="text-[9px] text-[var(--text-muted)] uppercase tracking-wider">Drying Rate</div>
               <div className="text-[13px] font-semibold tabular-nums">{drying.drying_rate_mm_hr.toFixed(2)} mm/hr</div>
             </div>
-            {drying.damp_minutes > 0 && (
+            {forecastDampMin > 0 && (
               <div>
                 <div className="text-[9px] text-[var(--text-muted)] uppercase tracking-wider">Damp in</div>
                 <div className="text-[13px] font-semibold tabular-nums" style={{ color: "var(--accent-yellow)" }}>
-                  {drying.damp_minutes} min
+                  {fmtTime(forecastDampMin)}
                 </div>
               </div>
             )}
-            {drying.dry_minutes > 0 && (
+            {forecastDryMin > 0 ? (
               <div>
                 <div className="text-[9px] text-[var(--text-muted)] uppercase tracking-wider">Dry in</div>
                 <div className="text-[13px] font-semibold tabular-nums" style={{ color: "var(--accent-green)" }}>
-                  {drying.dry_minutes} min
+                  {fmtTime(forecastDryMin)}
+                </div>
+              </div>
+            ) : !isDry && (
+              <div>
+                <div className="text-[9px] text-[var(--text-muted)] uppercase tracking-wider">Dry in</div>
+                <div className="text-[11px] font-semibold" style={{ color: "var(--accent-red)" }}>
+                  Not in 24h
                 </div>
               </div>
             )}
