@@ -140,6 +140,12 @@ def estimate_drying_time(
         "drying_rate_mm_hr": round(evap_rate, 2),
         "damp_minutes": round(damp_minutes, 0),
         "dry_minutes": round(dry_minutes, 0),
+        # Individual factors for frontend breakdown
+        "temp_factor": round(temp_factor, 2),
+        "wind_factor": round(wind_factor, 2),
+        "humidity_factor": round(humidity_factor, 2),
+        "solar_factor": round(solar_factor, 2),
+        "drain_factor": round(drain_factor, 2),
     }
 
 

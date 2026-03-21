@@ -85,6 +85,11 @@ export interface DryingEstimate {
   drying_rate_mm_hr: number;
   damp_minutes: number;
   dry_minutes: number;
+  temp_factor?: number;
+  wind_factor?: number;
+  humidity_factor?: number;
+  solar_factor?: number;
+  drain_factor?: number;
 }
 
 export interface StrategyPoint {

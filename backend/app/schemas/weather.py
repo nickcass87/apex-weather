@@ -78,6 +78,11 @@ class DryingEstimate(BaseModel):
     drying_rate_mm_hr: float = 0
     damp_minutes: float = 0
     dry_minutes: float = 0
+    temp_factor: Optional[float] = None
+    wind_factor: Optional[float] = None
+    humidity_factor: Optional[float] = None
+    solar_factor: Optional[float] = None
+    drain_factor: Optional[float] = None
 
 
 class StrategyPoint(BaseModel):
