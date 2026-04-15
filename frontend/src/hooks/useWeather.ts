@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { WeatherResponse, ModelComparisonResponse, NowcastResponse } from "@/types";
-import { getWeather, getModelComparison, getNowcast } from "@/lib/api";
+import { WeatherResponse, ModelComparisonResponse, NowcastResponse, CalibrationStats } from "@/types";
+import { getWeather, getModelComparison, getNowcast, getCalibration } from "@/lib/api";
 
 export function useWeather(circuitId: string | null) {
   const [weather, setWeather] = useState<WeatherResponse | null>(null);
   const [modelComparison, setModelComparison] = useState<ModelComparisonResponse | null>(null);
   const [nowcast, setNowcast] = useState<NowcastResponse | null>(null);
+  const [calibration, setCalibration] = useState<CalibrationStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -16,15 +17,17 @@ export function useWeather(circuitId: string | null) {
     setLoading(true);
     setError(null);
     try {
-      // Fetch weather + model comparison + nowcast in parallel
-      const [weatherData, modelsData, nowcastData] = await Promise.all([
+      // Fetch weather + model comparison + nowcast + calibration in parallel
+      const [weatherData, modelsData, nowcastData, calibrationData] = await Promise.all([
         getWeather(circuitId),
         getModelComparison(circuitId).catch(() => null),
         getNowcast(circuitId).catch(() => null),
+        getCalibration(circuitId).catch(() => null),
       ]);
       setWeather(weatherData);
       if (modelsData) setModelComparison(modelsData);
       if (nowcastData) setNowcast(nowcastData);
+      if (calibrationData) setCalibration(calibrationData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch weather");
     } finally {
@@ -39,5 +42,5 @@ export function useWeather(circuitId: string | null) {
     return () => clearInterval(interval);
   }, [fetchWeather]);
 
-  return { weather, modelComparison, nowcast, loading, error, refetch: fetchWeather };
+  return { weather, modelComparison, nowcast, calibration, loading, error, refetch: fetchWeather };
 }

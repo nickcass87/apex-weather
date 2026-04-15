@@ -199,6 +199,29 @@ export interface WeatherResponse {
   nowcast?: NowcastResponse;
 }
 
+export interface CalibrationStats {
+  circuit_id: string;
+  computed_at: string;
+  backtest_days: number;
+  sample_count: number;
+  is_available: boolean;
+
+  temp_bias_c: number;
+  temp_mae_c: number;
+  temp_rmse_c: number;
+
+  precip_ratio: number;
+  precip_mae_mmhr: number;
+  precip_rmse_mmhr: number;
+
+  wind_bias_kmh: number;
+  wind_mae_kmh: number;
+  wind_rmse_kmh: number;
+
+  skill_score: number;
+  correction_summary: string;
+}
+
 // ── Multi-model comparison ──
 
 export interface ModelForecastPoint {

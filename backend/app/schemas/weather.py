@@ -190,6 +190,33 @@ class NowcastResponse(BaseModel):
     rain_onset_minutes: Optional[int] = None
 
 
+class CalibrationStats(BaseModel):
+    """30-day ECMWF IFS vs ERA5 backtest statistics for a circuit."""
+    circuit_id: str
+    computed_at: str
+    backtest_days: int = 30
+    sample_count: int = 0
+    is_available: bool = False
+
+    # Temperature bias (additive correction in °C)
+    temp_bias_c: float = 0.0
+    temp_mae_c: float = 0.0
+    temp_rmse_c: float = 0.0
+
+    # Precipitation bias (multiplicative ratio — divide forecast by this)
+    precip_ratio: float = 1.0
+    precip_mae_mmhr: float = 0.0
+    precip_rmse_mmhr: float = 0.0
+
+    # Wind speed bias (additive correction in km/h)
+    wind_bias_kmh: float = 0.0
+    wind_mae_kmh: float = 0.0
+    wind_rmse_kmh: float = 0.0
+
+    skill_score: int = 0
+    correction_summary: str = ""
+
+
 # Resolve forward reference
 WeatherResponse.model_rebuild()
 

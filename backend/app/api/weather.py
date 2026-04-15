@@ -105,6 +105,8 @@ from app.schemas.weather import (
 )
 from app.services.weather_service import WeatherService
 from app.services.open_meteo import fetch_multi_model, fetch_real_weather
+from app.services.bias_engine import get_calibration_for_circuit, apply_bias_correction
+from app.schemas.weather import CalibrationStats as CalibrationStatsSchema
 from app.algorithms.track_temperature import estimate_track_temp_from_forecast
 from app.algorithms.confidence import compute_confidence_score
 from app.algorithms.wind_analysis import analyze_wind, forecast_wind_analysis, get_circuit_corners, compute_wind_veer
@@ -149,6 +151,15 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
             current = WeatherService._generate_demo_current(circuit.latitude, circuit.longitude)
             forecast_data = WeatherService._generate_demo_forecast(circuit.latitude, circuit.longitude, 24)
             use_demo = True
+
+    # Apply per-circuit ECMWF bias correction (non-blocking: warm cache hit)
+    cal_stats = await get_calibration_for_circuit(
+        circuit_id=str(circuit.id),
+        latitude=circuit.latitude,
+        longitude=circuit.longitude,
+    )
+    if cal_stats.get("is_available"):
+        forecast_data = apply_bias_correction(forecast_data, cal_stats)
 
     # Compute track temperature with surface type
     track_temp = weather_service.compute_track_temperature(current, surface_type=surface)
@@ -375,6 +386,25 @@ async def get_model_comparison(circuit_id: str, db: Session = Depends(get_db)):
         fetched_at=raw.get("fetched_at", ""),
         models=models_out,
     )
+
+
+@router.get("/{circuit_id}/calibration", response_model=CalibrationStatsSchema)
+async def get_calibration(circuit_id: str, db: Session = Depends(get_db)):
+    """Return 30-day ECMWF IFS vs ERA5 backtest bias stats for a circuit.
+
+    Cached 24h in-memory. First call may take ~2-3s while fetching archive data.
+    Returns is_available=False if archive APIs are unreachable.
+    """
+    circuit = db.query(Circuit).filter(Circuit.id == circuit_id).first()
+    if not circuit:
+        raise HTTPException(status_code=404, detail="Circuit not found")
+
+    stats = await get_calibration_for_circuit(
+        circuit_id=str(circuit.id),
+        latitude=circuit.latitude,
+        longitude=circuit.longitude,
+    )
+    return stats
 
 
 @router.get("/{circuit_id}/nowcast")
