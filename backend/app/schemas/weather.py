@@ -28,6 +28,10 @@ class WeatherCurrent(BaseModel):
     # Computed fields added by the API
     track_temperature_c: Optional[float] = None
     rain_eta_minutes: Optional[float] = None
+    wet_bulb_c: Optional[float] = None
+    dew_point_spread_c: Optional[float] = None
+    pressure_trend: Optional[str] = None  # "rising", "falling", "steady"
+    pressure_trend_hpa_3h: Optional[float] = None
 
     model_config = {"from_attributes": True}
 
@@ -43,6 +47,11 @@ class WeatherForecastPoint(BaseModel):
     cloud_cover_pct: Optional[float] = None
     weather_code: Optional[int] = None
     track_temperature_c: Optional[float] = None
+    dew_point_c: Optional[float] = None
+    wind_gust_kmh: Optional[float] = None
+    pressure_hpa: Optional[float] = None
+    solar_ghi_wm2: Optional[float] = None
+    precip_type: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
@@ -62,6 +71,9 @@ class WindAnalysis(BaseModel):
     straight_bearing: float = 0
     impact_level: str = "none"
     impact_details: List[str] = []
+    veer_trend: str = "steady"
+    veer_rotation_deg: float = 0.0
+    veer_meaning: str = ""
 
 
 class TrackConditionPoint(BaseModel):
@@ -143,6 +155,7 @@ class WeatherResponse(BaseModel):
     grip: Optional[GripEstimate] = None
     wind_forecast: List[WindForecastPoint] = []
     circuit_corners: List[CircuitCorner] = []
+    nowcast: Optional["NowcastResponse"] = None
 
 
 class AlertOut(BaseModel):
@@ -154,6 +167,27 @@ class AlertOut(BaseModel):
     is_active: bool
 
     model_config = {"from_attributes": True}
+
+
+class NowcastPoint(BaseModel):
+    forecast_time: datetime
+    temperature_c: Optional[float] = None
+    precipitation_intensity: Optional[float] = None
+    precipitation_probability: Optional[float] = None
+    wind_speed_kmh: Optional[float] = None
+    wind_direction_deg: Optional[float] = None
+    cloud_cover_pct: Optional[float] = None
+    precip_type: Optional[int] = None
+
+
+class NowcastResponse(BaseModel):
+    circuit_id: str
+    circuit_name: str
+    fetched_at: datetime
+    points: List[NowcastPoint] = []
+    has_rain_60min: bool = False
+    peak_intensity_mmhr: float = 0.0
+    rain_onset_minutes: Optional[int] = None
 
 
 # Resolve forward reference

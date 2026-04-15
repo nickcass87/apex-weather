@@ -39,6 +39,57 @@ def _smooth_wind_forecast(forecast_data: list) -> list:
 
     return smoothed
 
+
+def _compute_wet_bulb(temp_c: float, humidity_pct: float) -> float:
+    """Stull's empirical wet-bulb formula (accurate within 0.35°C for RH > 5%)."""
+    import math
+    rh = humidity_pct
+    t = temp_c
+    wb = (t * math.atan(0.151977 * (rh + 8.313659) ** 0.5)
+          + math.atan(t + rh)
+          - math.atan(rh - 1.676331)
+          + 0.00391838 * rh ** 1.5 * math.atan(0.023101 * rh)
+          - 4.686035)
+    return round(wb, 1)
+
+
+def _compute_pressure_trend(forecast_data: list) -> tuple:
+    """Compute pressure trend from first 6 forecast hours.
+
+    Returns (trend_label, hpa_per_3h):
+        trend_label: "rising", "falling", or "steady"
+        hpa_per_3h: rate of change in hPa per 3 hours
+    """
+    # Need at least 6 hours with pressure data
+    pressures_with_hour = [
+        (i, fp.pressure_hpa) for i, fp in enumerate(forecast_data[:7])
+        if fp.pressure_hpa is not None
+    ]
+    if len(pressures_with_hour) < 2:
+        return "steady", 0.0
+
+    first_hour, first_p = pressures_with_hour[0]
+    # Take pressure at ~6 hours
+    target_idx = min(len(pressures_with_hour) - 1, 6)
+    last_hour, last_p = pressures_with_hour[target_idx]
+
+    if last_hour == first_hour:
+        return "steady", 0.0
+
+    # Convert to hPa per 3 hours
+    hpa_per_hour = (last_p - first_p) / (last_hour - first_hour)
+    hpa_per_3h = round(hpa_per_hour * 3, 2)
+
+    if hpa_per_3h > 1.0:
+        trend = "rising"
+    elif hpa_per_3h < -1.0:
+        trend = "falling"
+    else:
+        trend = "steady"
+
+    return trend, hpa_per_3h
+
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
@@ -50,12 +101,13 @@ from app.schemas.weather import (
     WindAnalysis, TrackConditionPoint, DryingEstimate, StrategyPoint,
     GripEstimate, WindForecastPoint, CircuitCorner,
     ModelComparisonResponse, ModelComparison, ModelForecastPoint,
+    NowcastResponse, NowcastPoint,
 )
 from app.services.weather_service import WeatherService
 from app.services.open_meteo import fetch_multi_model, fetch_real_weather
 from app.algorithms.track_temperature import estimate_track_temp_from_forecast
 from app.algorithms.confidence import compute_confidence_score
-from app.algorithms.wind_analysis import analyze_wind, forecast_wind_analysis, get_circuit_corners
+from app.algorithms.wind_analysis import analyze_wind, forecast_wind_analysis, get_circuit_corners, compute_wind_veer
 from app.algorithms.drying_model import estimate_drying_time, forecast_track_conditions, classify_track_condition
 from app.algorithms.strategy import recommend_compound, generate_strategy_timeline
 from app.algorithms.grip_model import estimate_grip_level
@@ -114,6 +166,19 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
         is_demo_mode=use_demo,
     )
 
+    # Wet-bulb temperature (Stull's formula)
+    wet_bulb = None
+    if current.temperature_c is not None and current.humidity_pct is not None:
+        wet_bulb = _compute_wet_bulb(current.temperature_c, current.humidity_pct)
+
+    # Dew-point spread (° between air temp and dew point — lower = more humid, fog risk)
+    dew_spread = None
+    if current.temperature_c is not None and current.dew_point_c is not None:
+        dew_spread = round(current.temperature_c - current.dew_point_c, 1)
+
+    # Pressure trend
+    pressure_trend_label, pressure_trend_hpa_3h = _compute_pressure_trend(forecast_data)
+
     # Build response
     current_out = WeatherCurrent(
         circuit_id=circuit.id,
@@ -133,6 +198,10 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
         weather_code=current.weather_code,
         track_temperature_c=track_temp,
         rain_eta_minutes=rain_eta,
+        wet_bulb_c=wet_bulb,
+        dew_point_spread_c=dew_spread,
+        pressure_trend=pressure_trend_label,
+        pressure_trend_hpa_3h=pressure_trend_hpa_3h,
     )
 
     # Build forecast with track temps
@@ -149,6 +218,7 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
             longitude=circuit.longitude,
             forecast_time=fp.forecast_time,
             precipitation_intensity=fp.precipitation_intensity or 0,
+            solar_ghi_wm2=fp.solar_ghi_wm2,
         )
         track_temps.append(ft_track_temp)
         forecast_out.append(WeatherForecastPoint(
@@ -157,11 +227,16 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
             humidity_pct=fp.humidity_pct,
             wind_speed_kmh=fp.wind_speed_kmh,
             wind_direction_deg=fp.wind_direction_deg,
+            wind_gust_kmh=fp.wind_gust_kmh,
             precipitation_probability=fp.precipitation_probability,
             precipitation_intensity=fp.precipitation_intensity,
             cloud_cover_pct=fp.cloud_cover_pct,
             weather_code=fp.weather_code,
             track_temperature_c=ft_track_temp,
+            dew_point_c=fp.dew_point_c,
+            pressure_hpa=fp.pressure_hpa,
+            solar_ghi_wm2=fp.solar_ghi_wm2,
+            precip_type=fp.precip_type,
         ))
 
     # Alerts
@@ -179,9 +254,10 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
 
     # === NEW COMPUTATIONS ===
 
-    # Wind analysis
+    # Wind analysis + veer/back trend
     wind_data = analyze_wind(current, circuit.name)
-    wind_analysis_out = WindAnalysis(**wind_data)
+    veer_data = compute_wind_veer(forecast_data)
+    wind_analysis_out = WindAnalysis(**wind_data, **veer_data)
 
     # Wind forecast (built after track conditions so we can include precip overlay)
     # Placeholder — populated after track_conds computed below
@@ -298,4 +374,58 @@ async def get_model_comparison(circuit_id: str, db: Session = Depends(get_db)):
     return ModelComparisonResponse(
         fetched_at=raw.get("fetched_at", ""),
         models=models_out,
+    )
+
+
+@router.get("/{circuit_id}/nowcast")
+async def get_nowcast(circuit_id: str, db: Session = Depends(get_db)):
+    """1-minute nowcast for the next 60 minutes (Tomorrow.io only, Imola circuit).
+
+    For non-Imola circuits or when Tomorrow.io is unavailable, returns an empty
+    nowcast derived from the first hour of the ECMWF forecast.
+    """
+    circuit = db.query(Circuit).filter(Circuit.id == circuit_id).first()
+    if not circuit:
+        raise HTTPException(status_code=404, detail="Circuit not found")
+
+    is_imola = "Imola" in (circuit.name or "")
+    points_out = []
+    has_rain = False
+    peak_intensity = 0.0
+    rain_onset: int | None = None
+
+    if is_imola and not weather_service.is_demo_mode:
+        try:
+            from app.services.tomorrow_io import TomorrowIOProvider
+            provider = TomorrowIOProvider()
+            nowcast_points = await provider.get_nowcast(circuit.latitude, circuit.longitude, minutes=60)
+            for i, p in enumerate(nowcast_points):
+                intensity = p.precipitation_intensity or 0.0
+                if intensity > 0.1:
+                    has_rain = True
+                    peak_intensity = max(peak_intensity, intensity)
+                    if rain_onset is None:
+                        rain_onset = i
+                points_out.append(NowcastPoint(
+                    forecast_time=p.forecast_time,
+                    temperature_c=p.temperature_c,
+                    precipitation_intensity=intensity,
+                    precipitation_probability=p.precipitation_probability,
+                    wind_speed_kmh=p.wind_speed_kmh,
+                    wind_direction_deg=p.wind_direction_deg,
+                    cloud_cover_pct=p.cloud_cover_pct,
+                    precip_type=p.precip_type,
+                ))
+        except Exception as e:
+            logger.warning("Nowcast fetch failed for %s: %s", circuit.name, e)
+            # Fall through to empty response
+
+    return NowcastResponse(
+        circuit_id=str(circuit.id),
+        circuit_name=circuit.name,
+        fetched_at=datetime.now(timezone.utc),
+        points=points_out,
+        has_rain_60min=has_rain,
+        peak_intensity_mmhr=round(peak_intensity, 2),
+        rain_onset_minutes=rain_onset,
     )

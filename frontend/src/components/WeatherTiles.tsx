@@ -21,6 +21,18 @@ function rainEtaDisplay(minutes: number | null): string {
   return `${hours}h ${mins}m`;
 }
 
+function pressureTrendArrow(trend: string | null): string {
+  if (trend === "rising") return "↑";
+  if (trend === "falling") return "↓";
+  return "→";
+}
+
+function pressureTrendColor(trend: string | null): string {
+  if (trend === "rising") return "var(--accent-green)";
+  if (trend === "falling") return "var(--accent-red)";
+  return "var(--text-primary)";
+}
+
 function Tile({
   label,
   value,
@@ -108,8 +120,21 @@ export default function WeatherTiles({ weather }: Props) {
       />
       <Tile
         label="Pressure"
-        value={weather.pressure_hpa?.toFixed(0) ?? "--"}
+        value={`${weather.pressure_hpa?.toFixed(0) ?? "--"} ${pressureTrendArrow(weather.pressure_trend ?? null)}`}
         unit="hPa"
+        accentColor={weather.pressure_trend !== "steady" && weather.pressure_trend != null ? pressureTrendColor(weather.pressure_trend) : undefined}
+      />
+      <Tile
+        label="Wet Bulb"
+        value={weather.wet_bulb_c?.toFixed(1) ?? "--"}
+        unit="°C"
+        accentColor="var(--accent-blue)"
+      />
+      <Tile
+        label="Dew Spread"
+        value={weather.dew_point_spread_c?.toFixed(1) ?? "--"}
+        unit="°C"
+        accentColor={(weather.dew_point_spread_c ?? 99) < 3 ? "var(--accent-red)" : undefined}
       />
     </div>
   );

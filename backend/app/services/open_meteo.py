@@ -166,7 +166,7 @@ async def fetch_real_weather(
         "precipitation", "precipitation_probability",
         "wind_speed_10m", "wind_direction_10m", "wind_gusts_10m",
         "cloud_cover", "surface_pressure", "visibility", "uv_index",
-        "weather_code",
+        "weather_code", "shortwave_radiation",
     ]
     current_vars = [
         "temperature_2m", "relative_humidity_2m", "dew_point_2m",
@@ -241,6 +241,7 @@ def _parse_real_weather(raw: dict, lat: float, lon: float) -> tuple:
     clouds = hourly.get("cloud_cover", [])
     pressures = hourly.get("surface_pressure", [])
     wx_codes = hourly.get("weather_code", [])
+    ghi_vals = hourly.get("shortwave_radiation", [])
 
     forecast: list = []
     for i, t in enumerate(times):
@@ -260,6 +261,10 @@ def _parse_real_weather(raw: dict, lat: float, lon: float) -> tuple:
             precipitation_intensity=_safe(precips, i),
             cloud_cover_pct=_safe(clouds, i),
             weather_code=int(_safe(wx_codes, i, 0)),
+            dew_point_c=_safe(dew_points, i),
+            pressure_hpa=_safe(pressures, i),
+            solar_ghi_wm2=_safe(ghi_vals, i) if ghi_vals else None,
+            precip_type=_precip_type_from_code(int(_safe(wx_codes, i, 0))),
         ))
 
     return current, forecast
@@ -275,3 +280,16 @@ def _safe(lst: list, idx: int, default: float = 0.0) -> float:
 def _iso_now() -> str:
     from datetime import datetime, timezone
     return datetime.now(timezone.utc).isoformat()
+
+
+def _precip_type_from_code(weather_code: int) -> int:
+    """Derive precipitation type from WMO weather code.
+    Returns: 0=N/A, 1=Rain, 2=Snow, 3=Freezing rain, 4=Ice pellets
+    """
+    if weather_code in range(51, 68) or weather_code in range(80, 83) or weather_code in range(95, 100):
+        return 1  # Rain
+    if weather_code in range(71, 78) or weather_code in range(85, 87):
+        return 2  # Snow
+    if weather_code in (56, 57, 66, 67):
+        return 3  # Freezing rain
+    return 0  # N/A

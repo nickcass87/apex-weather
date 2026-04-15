@@ -16,6 +16,7 @@ import ConfidenceIndicator from "@/components/ConfidenceIndicator";
 import TrackTempChart from "@/components/TrackTempChart";
 import RainIntensityChart from "@/components/RainIntensityChart";
 import ModelComparisonPanel from "@/components/ModelComparisonPanel";
+import NowcastPanel from "@/components/NowcastPanel";
 import WindAnalysisPanel from "@/components/WindAnalysisPanel";
 import SurfaceConditionsPanel from "@/components/SurfaceConditionsPanel";
 import GripIndicator from "@/components/GripIndicator";
@@ -50,7 +51,7 @@ export default function Dashboard() {
   const [panOffsetMs, setPanOffsetMs] = useState(0);
 
   const selectedCircuit = circuits.find((c) => c.id === selectedId) || null;
-  const { weather, modelComparison, loading, error, refetch } = useWeather(selectedId);
+  const { weather, modelComparison, nowcast, loading, error, refetch } = useWeather(selectedId);
   const { sessions, addSession, removeSession } = useLocalSessions(selectedId);
 
   useEffect(() => {
@@ -344,6 +345,11 @@ export default function Dashboard() {
                   timeRange={timeRange}
                 />
               </div>
+
+              {/* ─── Nowcast ─── */}
+              {nowcast && nowcast.points.length > 0 && (
+                <NowcastPanel nowcast={nowcast} />
+              )}
             </div>
           )}
 

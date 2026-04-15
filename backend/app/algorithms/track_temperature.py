@@ -163,6 +163,7 @@ def estimate_track_temp_from_forecast(
     longitude: Optional[float] = None,
     forecast_time: Optional[datetime] = None,
     precipitation_intensity: float = 0.0,
+    solar_ghi_wm2: Optional[float] = None,
 ) -> float:
     """Estimate track temp for a forecast point, with solar position awareness.
 
@@ -187,6 +188,19 @@ def estimate_track_temp_from_forecast(
     Returns:
         Estimated track surface temperature in Celsius.
     """
+    # If the provider supplies a direct GHI measurement, use it directly — it's
+    # more accurate than our estimated solar model.
+    if solar_ghi_wm2 is not None:
+        return estimate_track_temperature(
+            air_temp_c=air_temp_c,
+            solar_radiation_wm2=solar_ghi_wm2,
+            wind_speed_kmh=wind_speed_kmh,
+            cloud_cover_pct=cloud_cover_pct,
+            humidity_pct=humidity_pct,
+            surface_type=surface_type,
+            precipitation_intensity=precipitation_intensity,
+        )
+
     clear_sky_radiation = 800.0
 
     if latitude is not None and longitude is not None and forecast_time is not None:

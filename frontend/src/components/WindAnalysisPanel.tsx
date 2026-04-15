@@ -28,6 +28,18 @@ export default function WindAnalysisPanel({ wind, windForecast }: Props) {
         >
           {wind.impact_level}
         </span>
+        {wind.veer_trend !== "steady" && (
+          <span
+            className="text-[9px] px-2 py-[3px] rounded font-semibold uppercase tracking-wider"
+            style={{
+              color: wind.veer_trend === "veering" ? "var(--accent-green)" : "var(--accent-yellow)",
+              backgroundColor: `color-mix(in srgb, ${wind.veer_trend === "veering" ? "var(--accent-green)" : "var(--accent-yellow)"} 12%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${wind.veer_trend === "veering" ? "var(--accent-green)" : "var(--accent-yellow)"} 20%, transparent)`,
+            }}
+          >
+            {wind.veer_trend}
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-4">
@@ -101,6 +113,17 @@ export default function WindAnalysisPanel({ wind, windForecast }: Props) {
               {detail}
             </div>
           ))}
+        </div>
+      )}
+      {wind.veer_meaning && wind.veer_trend !== "steady" && (
+        <div className="text-[11px] text-[var(--text-muted)] mt-1 mb-2">
+          <span
+            className="font-semibold"
+            style={{ color: wind.veer_trend === "veering" ? "var(--accent-green)" : "var(--accent-yellow)" }}
+          >
+            Wind {wind.veer_trend}
+          </span>
+          {" — "}{wind.veer_meaning}
         </div>
       )}
 
