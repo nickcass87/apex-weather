@@ -92,90 +92,93 @@ export default function RainIntensityChart({ forecast, sessions, timeRange }: Pr
           No precipitation expected
         </div>
       ) : (
-        <>
-          <div className="relative flex gap-[1px] items-end" style={{ height: "100px" }}>
-            {/* Session shading */}
-            {sessionBands.map((band, i) => (
-              <div
-                key={`session-${i}`}
-                className="absolute top-0 bottom-0 rounded-sm pointer-events-none"
-                style={{
-                  left: `${band.left}%`,
-                  width: `${band.width}%`,
-                  background: `color-mix(in srgb, ${band.color} 12%, transparent)`,
-                  borderLeft: `1px solid color-mix(in srgb, ${band.color} 25%, transparent)`,
-                  borderRight: `1px solid color-mix(in srgb, ${band.color} 25%, transparent)`,
-                  zIndex: 0,
-                }}
-              >
-                <span
-                  className="absolute top-0.5 left-1 text-[7px] font-semibold tracking-wider uppercase whitespace-nowrap"
-                  style={{ color: band.color, opacity: 0.7 }}
-                >
-                  {band.shortName}
-                </span>
-              </div>
-            ))}
-            {points.map((point, i) => {
-              const intensity = point.precipitation_intensity ?? 0;
-              const probability = point.precipitation_probability ?? 0;
-              const barPct =
-                intensity < 0.1
-                  ? 2
-                  : Math.max(8, (intensity / maxIntensity) * 100);
-
-              return (
+        /* Scrollable wrapper — ensures bars never squeeze below a readable width */
+        <div className="overflow-x-auto">
+          <div style={{ minWidth: `${Math.max(points.length * 14, 400)}px` }}>
+            <div className="relative flex gap-[1px] items-end" style={{ height: "100px" }}>
+              {/* Session shading */}
+              {sessionBands.map((band, i) => (
                 <div
-                  key={i}
-                  className="flex-1 flex flex-col items-center justify-end h-full"
-                  style={{ position: "relative", zIndex: 1 }}
+                  key={`session-${i}`}
+                  className="absolute top-0 bottom-0 rounded-sm pointer-events-none"
+                  style={{
+                    left: `${band.left}%`,
+                    width: `${band.width}%`,
+                    background: `color-mix(in srgb, ${band.color} 12%, transparent)`,
+                    borderLeft: `1px solid color-mix(in srgb, ${band.color} 25%, transparent)`,
+                    borderRight: `1px solid color-mix(in srgb, ${band.color} 25%, transparent)`,
+                    zIndex: 0,
+                  }}
                 >
-                  {probability > 0 && (
-                    <span className="text-[7px] text-[var(--text-muted)] mb-0.5 leading-none tabular-nums">
-                      {probability.toFixed(0)}%
-                    </span>
-                  )}
-
-                  <div
-                    className="w-full rounded-t-sm"
-                    style={{
-                      height: `${barPct}%`,
-                      backgroundColor: getIntensityColor(intensity),
-                      opacity:
-                        intensity < 0.1
-                          ? 0.2
-                          : Math.max(0.6, 0.6 + (intensity / maxIntensity) * 0.4),
-                    }}
-                    title={`${new Date(point.forecast_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} — ${intensity.toFixed(1)} mm/hr (${getIntensityLabel(intensity)}) | ${probability.toFixed(0)}%`}
-                  />
-
-                  {intensity >= 0.1 && (
-                    <span className="text-[7px] text-[var(--text-muted)] mt-0.5 leading-none tabular-nums font-mono">
-                      {intensity.toFixed(1)}
-                    </span>
-                  )}
+                  <span
+                    className="absolute top-0.5 left-1 text-[7px] font-semibold tracking-wider uppercase whitespace-nowrap"
+                    style={{ color: band.color, opacity: 0.7 }}
+                  >
+                    {band.shortName}
+                  </span>
                 </div>
-              );
-            })}
-          </div>
+              ))}
+              {points.map((point, i) => {
+                const intensity = point.precipitation_intensity ?? 0;
+                const probability = point.precipitation_probability ?? 0;
+                const barPct =
+                  intensity < 0.1
+                    ? 2
+                    : Math.max(8, (intensity / maxIntensity) * 100);
 
-          {/* Adaptive time axis */}
-          <div className="relative h-4 mt-1.5">
-            {ticks.map((tickMs) => {
-              const pct = ((tickMs - timeRange.startMs) / (timeRange.endMs - timeRange.startMs)) * 100;
-              const d = new Date(tickMs);
-              return (
-                <span
-                  key={tickMs}
-                  className="absolute text-[8px] text-[var(--text-muted)] font-mono"
-                  style={{ left: `${pct}%`, transform: "translateX(-50%)" }}
-                >
-                  {d.getHours().toString().padStart(2, "0")}:{d.getMinutes().toString().padStart(2, "0")}
-                </span>
-              );
-            })}
+                return (
+                  <div
+                    key={i}
+                    className="flex-1 flex flex-col items-center justify-end h-full"
+                    style={{ position: "relative", zIndex: 1 }}
+                  >
+                    {probability > 0 && (
+                      <span className="text-[7px] text-[var(--text-muted)] mb-0.5 leading-none tabular-nums">
+                        {probability.toFixed(0)}%
+                      </span>
+                    )}
+
+                    <div
+                      className="w-full rounded-t-sm"
+                      style={{
+                        height: `${barPct}%`,
+                        backgroundColor: getIntensityColor(intensity),
+                        opacity:
+                          intensity < 0.1
+                            ? 0.2
+                            : Math.max(0.6, 0.6 + (intensity / maxIntensity) * 0.4),
+                      }}
+                      title={`${new Date(point.forecast_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} — ${intensity.toFixed(1)} mm/hr (${getIntensityLabel(intensity)}) | ${probability.toFixed(0)}%`}
+                    />
+
+                    {intensity >= 0.1 && (
+                      <span className="text-[7px] text-[var(--text-muted)] mt-0.5 leading-none tabular-nums font-mono">
+                        {intensity.toFixed(1)}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Adaptive time axis */}
+            <div className="relative h-4 mt-1.5">
+              {ticks.map((tickMs) => {
+                const pct = ((tickMs - timeRange.startMs) / (timeRange.endMs - timeRange.startMs)) * 100;
+                const d = new Date(tickMs);
+                return (
+                  <span
+                    key={tickMs}
+                    className="absolute text-[8px] text-[var(--text-muted)] font-mono"
+                    style={{ left: `${pct}%`, transform: "translateX(-50%)" }}
+                  >
+                    {d.getHours().toString().padStart(2, "0")}:{d.getMinutes().toString().padStart(2, "0")}
+                  </span>
+                );
+              })}
+            </div>
           </div>
-        </>
+        </div>
       )}
 
       <div className="flex gap-3 mt-3 text-[8px] text-[var(--text-muted)] flex-wrap">
