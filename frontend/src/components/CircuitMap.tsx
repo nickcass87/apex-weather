@@ -194,17 +194,18 @@ export default function CircuitMap({
         const data = await res.json();
 
         // Satellite infrared (cloud imagery) — rendered below radar
+        // IR tiles exist only at low zoom levels (0-3); Leaflet up-scales them to fill
+        // the viewport, giving a full-screen cloud coverage overlay.
         const irFrames = data?.satellite?.infrared;
         if (irFrames && irFrames.length > 0) {
           const latestIR = irFrames[irFrames.length - 1].path;
           satelliteTileRef.current = L.tileLayer(
             `https://tilecache.rainviewer.com${latestIR}/512/{z}/{x}/{y}/0/0_0.png`,
             {
-              opacity: 0.30,
+              opacity: 0.45,
               zIndex: 8,
               tileSize: 512,
-              zoomOffset: -1,
-              maxNativeZoom: 6,
+              maxNativeZoom: 3,
               maxZoom: 19,
             }
           ).addTo(map);
@@ -326,67 +327,60 @@ export default function CircuitMap({
     const windDir = forecast.direction_deg;
     const cosLat = Math.cos(circuit.latitude * Math.PI / 180);
 
-    // Cloud/wind movement arrow — large arrow showing wind direction across the map
+    // Large wind flow arrow — spans the whole map, shows the uniform wind direction clearly.
+    // Multiple parallel lines give a "flow field" look so it's obvious all corners share
+    // the same wind, only the head/tail component differs per corner bearing.
     if (windSpeed > 1) {
-      const arrowLen = Math.min(0.06, 0.02 + windSpeed * 0.001); // degrees offset
       const windToRad = ((windDir + 180) % 360) * Math.PI / 180;
-      // Arrow starts upwind of circuit, ends downwind
-      const startLat = circuit.latitude - Math.cos(windToRad) * arrowLen;
-      const startLng = circuit.longitude - (Math.sin(windToRad) * arrowLen) / cosLat;
-      const endLat = circuit.latitude + Math.cos(windToRad) * arrowLen;
-      const endLng = circuit.longitude + (Math.sin(windToRad) * arrowLen) / cosLat;
-
-      // Arrow color based on speed
       const arrowColor = windSpeed > 40 ? "#c96060" : windSpeed > 20 ? "#d9af42" : "#6a8a9a";
-      const arrowOpacity = Math.min(0.6, 0.2 + windSpeed * 0.01);
+      const baseOpacity = Math.min(0.55, 0.18 + windSpeed * 0.009);
+      const arrowLen = Math.min(0.10, 0.04 + windSpeed * 0.0015);
 
-      L.polyline([[startLat, startLng], [endLat, endLng]], {
-        color: arrowColor,
-        weight: 2,
-        opacity: arrowOpacity,
-        dashArray: "8,4",
-      }).addTo(precipLayer);
+      // Draw 3 parallel flow lines (offset perpendicular to wind direction)
+      const perpRad = windToRad + Math.PI / 2;
+      const offsets = [-0.018, 0, 0.018];
+      offsets.forEach((off) => {
+        const offLat = Math.cos(perpRad) * off;
+        const offLng = (Math.sin(perpRad) * off) / cosLat;
+        const sLat = circuit.latitude - Math.cos(windToRad) * arrowLen + offLat;
+        const sLng = circuit.longitude - Math.sin(windToRad) * arrowLen / cosLat + offLng;
+        const eLat = circuit.latitude + Math.cos(windToRad) * arrowLen + offLat;
+        const eLng = circuit.longitude + Math.sin(windToRad) * arrowLen / cosLat + offLng;
 
-      // Arrowhead at end
-      const headSize = arrowLen * 0.35;
-      const headAngle1 = windToRad + 2.6; // ~150 degrees
-      const headAngle2 = windToRad - 2.6;
-      const head1Lat = endLat + Math.cos(headAngle1) * headSize;
-      const head1Lng = endLng + (Math.sin(headAngle1) * headSize) / cosLat;
-      const head2Lat = endLat + Math.cos(headAngle2) * headSize;
-      const head2Lng = endLng + (Math.sin(headAngle2) * headSize) / cosLat;
+        L.polyline([[sLat, sLng], [eLat, eLng]], {
+          color: arrowColor,
+          weight: off === 0 ? 2.5 : 1.2,
+          opacity: off === 0 ? baseOpacity : baseOpacity * 0.5,
+          dashArray: "10,5",
+        }).addTo(precipLayer);
 
-      L.polyline([[head1Lat, head1Lng], [endLat, endLng], [head2Lat, head2Lng]], {
-        color: arrowColor,
-        weight: 2,
-        opacity: arrowOpacity,
-      }).addTo(precipLayer);
+        // Arrowhead only on centre line
+        if (off === 0) {
+          const headSize = arrowLen * 0.28;
+          const h1Lat = eLat + Math.cos(windToRad + 2.6) * headSize;
+          const h1Lng = eLng + Math.sin(windToRad + 2.6) * headSize / cosLat;
+          const h2Lat = eLat + Math.cos(windToRad - 2.6) * headSize;
+          const h2Lng = eLng + Math.sin(windToRad - 2.6) * headSize / cosLat;
+          L.polyline([[h1Lat, h1Lng], [eLat, eLng], [h2Lat, h2Lng]], {
+            color: arrowColor, weight: 2.5, opacity: baseOpacity,
+          }).addTo(precipLayer);
 
-      // Wind speed label at midpoint
-      const midLat = (startLat + endLat) / 2;
-      const midLng = (startLng + endLng) / 2;
-      // Offset label perpendicular to wind direction
-      const perpLat = midLat + Math.cos(windToRad + Math.PI / 2) * arrowLen * 0.3;
-      const perpLng = midLng + (Math.sin(windToRad + Math.PI / 2) * arrowLen * 0.3) / cosLat;
-
-      const windLabel = L.divIcon({
-        html: `<div style="
-          font-family:Inter,system-ui,sans-serif;
-          font-size:9px;
-          font-weight:600;
-          color:${arrowColor};
-          background:rgba(11,10,14,0.85);
-          padding:1px 5px;
-          border-radius:3px;
-          white-space:nowrap;
-          border:1px solid ${arrowColor}30;
-          letter-spacing:0.5px;
-        ">${Math.round(windSpeed)} km/h ${forecast.direction_label}</div>`,
-        className: "wind-direction-label",
-        iconSize: [80, 20],
-        iconAnchor: [40, 10],
+          // Speed label offset perpendicular from centre arrow
+          const midLat = (sLat + eLat) / 2;
+          const midLng = (sLng + eLng) / 2;
+          const lblLat = midLat + Math.cos(perpRad) * arrowLen * 0.25;
+          const lblLng = midLng + (Math.sin(perpRad) * arrowLen * 0.25) / cosLat;
+          L.marker([lblLat, lblLng], {
+            icon: L.divIcon({
+              html: `<div style="font-family:Inter,system-ui,sans-serif;font-size:9px;font-weight:700;color:${arrowColor};background:rgba(11,10,14,0.88);padding:2px 6px;border-radius:3px;white-space:nowrap;border:1px solid ${arrowColor}35;letter-spacing:0.5px;">${Math.round(windSpeed)} km/h ${forecast.direction_label}</div>`,
+              className: "",
+              iconSize: [90, 20],
+              iconAnchor: [45, 10],
+            }),
+            interactive: false,
+          }).addTo(precipLayer);
+        }
       });
-      L.marker([perpLat, perpLng], { icon: windLabel, interactive: false }).addTo(precipLayer);
     }
 
     // Wind corner markers
@@ -527,41 +521,32 @@ export default function CircuitMap({
               zIndex: 500,
             }}
           >
-            <style>{`
-              @keyframes cloudDrift {
-                0%   { transform: translate(0, 0) scale(1);   opacity: var(--cp-opacity); }
-                50%  { opacity: calc(var(--cp-opacity) * 1.3); }
-                100% { transform: translate(var(--cp-dx), var(--cp-dy)) scale(0.7); opacity: 0; }
-              }
-            `}</style>
-            {cloudParticles.map((p, i) => {
-              // Compute dx/dy in % of container based on wind direction
+            {/* Per-particle named keyframes — CSS custom properties don't work inside
+                @keyframes transform in Chrome, so we generate unique names per particle */}
+            <style>{cloudParticles.map((p, i) => {
               const rad = (p.windToDeg * Math.PI) / 180;
-              const travel = 30 + (p.size / 28) * 20; // larger blobs travel further
-              const dx = Math.sin(rad) * travel;
-              const dy = -Math.cos(rad) * travel;
-              return (
-                <div
-                  key={i}
-                  style={{
-                    position: "absolute",
-                    left: `${p.startX}%`,
-                    top: `${p.startY}%`,
-                    width: `${p.size}px`,
-                    height: `${p.size * 0.6}px`,
-                    borderRadius: "50%",
-                    background: "rgba(180,195,210,0.9)",
-                    filter: `blur(${p.size * 0.35}px)`,
-                    // CSS custom properties for keyframe
-                    ["--cp-opacity" as any]: p.opacity,
-                    ["--cp-dx" as any]: `${dx}%`,
-                    ["--cp-dy" as any]: `${dy}%`,
-                    animation: `cloudDrift ${p.durationSec}s ${p.delay}s linear infinite`,
-                    willChange: "transform, opacity",
-                  }}
-                />
-              );
-            })}
+              const travel = 30 + (p.size / 28) * 20;
+              const dx = (Math.sin(rad) * travel).toFixed(1);
+              const dy = (-Math.cos(rad) * travel).toFixed(1);
+              return `@keyframes cp${i}{0%{transform:translate(0,0) scale(1);opacity:${p.opacity.toFixed(3)}}50%{opacity:${(p.opacity * 1.4).toFixed(3)}}100%{transform:translate(${dx}%,${dy}%) scale(0.6);opacity:0}}`;
+            }).join("\n")}</style>
+            {cloudParticles.map((p, i) => (
+              <div
+                key={i}
+                style={{
+                  position: "absolute",
+                  left: `${p.startX}%`,
+                  top: `${p.startY}%`,
+                  width: `${p.size}px`,
+                  height: `${p.size * 0.6}px`,
+                  borderRadius: "50%",
+                  background: "rgba(190,205,218,0.95)",
+                  filter: `blur(${p.size * 0.4}px)`,
+                  animation: `cp${i} ${p.durationSec}s ${p.delay}s linear infinite`,
+                  willChange: "transform, opacity",
+                }}
+              />
+            ))}
           </div>
         )}
       </div>
