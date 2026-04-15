@@ -243,12 +243,21 @@ def _parse_real_weather(raw: dict, lat: float, lon: float) -> tuple:
     wx_codes = hourly.get("weather_code", [])
     ghi_vals = hourly.get("shortwave_radiation", [])
 
+    now_utc = datetime.now(timezone.utc)
+
     forecast: list = []
     for i, t in enumerate(times):
         try:
             dt = datetime.fromisoformat(t.replace("Z", "+00:00"))
+            # Make naive timestamps UTC-aware for comparison
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
         except Exception:
             dt = datetime.now(timezone.utc) + timedelta(hours=i)
+
+        # Skip hours that are already in the past — always show future 24h from now
+        if dt < now_utc - timedelta(minutes=30):
+            continue
 
         forecast.append(ForecastData(
             forecast_time=dt,
