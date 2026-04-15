@@ -97,18 +97,6 @@ class DryingEstimate(BaseModel):
     drain_factor: Optional[float] = None
 
 
-class StrategyPoint(BaseModel):
-    hour: int = 0
-    forecast_time: datetime
-    track_temp_c: float = 0
-    condition: str = "dry"
-    compound: str = "medium"
-    compound_alternative: Optional[str] = None
-    compound_reason: str = ""
-    rain_probability: float = 0
-    pit_recommendation: Optional[str] = None
-
-
 class GripEstimate(BaseModel):
     grip_pct: float = 85
     mechanical_grip_pct: float = 85
@@ -151,7 +139,6 @@ class WeatherResponse(BaseModel):
     wind_analysis: Optional[WindAnalysis] = None
     track_conditions: List[TrackConditionPoint] = []
     drying_estimate: Optional[DryingEstimate] = None
-    strategy_timeline: List[StrategyPoint] = []
     grip: Optional[GripEstimate] = None
     wind_forecast: List[WindForecastPoint] = []
     circuit_corners: List[CircuitCorner] = []

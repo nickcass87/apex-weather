@@ -104,18 +104,6 @@ export interface DryingEstimate {
   drain_factor?: number;
 }
 
-export interface StrategyPoint {
-  hour: number;
-  forecast_time: string;
-  track_temp_c: number;
-  condition: string;
-  compound: string;
-  compound_alternative: string | null;
-  compound_reason: string;
-  rain_probability: number;
-  pit_recommendation: string | null;
-}
-
 export interface GripEstimate {
   grip_pct: number;
   mechanical_grip_pct: number;
@@ -192,7 +180,6 @@ export interface WeatherResponse {
   wind_analysis: WindAnalysis | null;
   track_conditions: TrackConditionPoint[];
   drying_estimate: DryingEstimate | null;
-  strategy_timeline: StrategyPoint[];
   grip: GripEstimate | null;
   wind_forecast: WindForecastPoint[];
   circuit_corners: CircuitCorner[];

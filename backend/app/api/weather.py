@@ -98,7 +98,7 @@ from app.db.session import get_db
 from app.models.circuit import Circuit
 from app.schemas.weather import (
     WeatherResponse, WeatherCurrent, WeatherForecastPoint, AlertOut,
-    WindAnalysis, TrackConditionPoint, DryingEstimate, StrategyPoint,
+    WindAnalysis, TrackConditionPoint, DryingEstimate,
     GripEstimate, WindForecastPoint, CircuitCorner,
     ModelComparisonResponse, ModelComparison, ModelForecastPoint,
     NowcastResponse, NowcastPoint,
@@ -111,7 +111,6 @@ from app.algorithms.track_temperature import estimate_track_temp_from_forecast
 from app.algorithms.confidence import compute_confidence_score
 from app.algorithms.wind_analysis import analyze_wind, forecast_wind_analysis, get_circuit_corners, compute_wind_veer
 from app.algorithms.drying_model import estimate_drying_time, forecast_track_conditions, classify_track_condition
-from app.algorithms.strategy import recommend_compound, generate_strategy_timeline
 from app.algorithms.grip_model import estimate_grip_level
 
 router = APIRouter(prefix="/weather", tags=["weather"])
@@ -320,10 +319,6 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
         )
         drying_out = DryingEstimate(**drying)
 
-    # Strategy timeline
-    strategy = generate_strategy_timeline(forecast_data, track_temps, surface)
-    strategy_out = [StrategyPoint(**s) for s in strategy]
-
     # Grip estimate — pass recent rain for better surface classification
     track_condition = classify_track_condition(
         precipitation_intensity=precip,
@@ -355,7 +350,6 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
         wind_analysis=wind_analysis_out,
         track_conditions=track_conditions_out,
         drying_estimate=drying_out,
-        strategy_timeline=strategy_out,
         grip=grip_out,
         wind_forecast=wind_forecast_out,
         circuit_corners=corners_out,
