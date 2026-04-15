@@ -126,6 +126,7 @@ export default function CircuitMap({
   const precipLayerRef = useRef<any>(null);
   const leafletRef = useRef<any>(null);
   const radarTileRef = useRef<any>(null);
+  const boundsFittedForMapRef = useRef(-1); // tracks which mapReady generation we last fitted
   const [mapReady, setMapReady] = useState(0);
 
   useEffect(() => {
@@ -233,12 +234,16 @@ export default function CircuitMap({
     const precipLayer = precipLayerRef.current;
     if (!L || !map || !markersLayer || !precipLayer) return;
 
-    if (corners.length > 1) {
+    // Fit bounds only on the first render after map initialisation — not on every
+    // slider tick.  boundsFittedForMapRef tracks which mapReady generation we've
+    // already fitted so re-running this effect (on selectedHourIndex changes) is a no-op.
+    if (corners.length > 1 && boundsFittedForMapRef.current !== mapReady) {
       const bounds = L.latLngBounds(
         corners.map((c: CircuitCorner) => [c.lat, c.lng] as [number, number])
       );
       bounds.extend([circuit.latitude, circuit.longitude]);
       map.fitBounds(bounds.pad(0.5));
+      boundsFittedForMapRef.current = mapReady;
     }
 
     markersLayer.clearLayers();

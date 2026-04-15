@@ -1,9 +1,43 @@
 from __future__ import annotations
 
 import logging
+import math
 import uuid
+from typing import List
 
 logger = logging.getLogger(__name__)
+
+
+def _smooth_wind_forecast(forecast_data: list) -> list:
+    """Apply circular-mean smoothing to wind direction/speed across forecast points.
+
+    Uses a 3-point weighted average [0.25, 0.5, 0.25] to reduce single-hour
+    spikes (e.g., model interpolation artefacts) while preserving the overall
+    directional trend.  Applied in-place on a shallow copy of each point.
+    """
+    import copy
+    if len(forecast_data) < 3:
+        return forecast_data
+
+    smoothed = [copy.copy(p) for p in forecast_data]
+    weights = [0.25, 0.5, 0.25]
+
+    for i in range(1, len(forecast_data) - 1):
+        pts = forecast_data[i - 1 : i + 2]
+        dirs = [p.wind_direction_deg or 0 for p in pts]
+        speeds = [p.wind_speed_kmh or 0 for p in pts]
+
+        # Circular mean for direction (handles 0/360 wrap-around correctly)
+        sin_sum = sum(w * math.sin(math.radians(d)) for w, d in zip(weights, dirs))
+        cos_sum = sum(w * math.cos(math.radians(d)) for w, d in zip(weights, dirs))
+        smoothed_dir = math.degrees(math.atan2(sin_sum, cos_sum)) % 360
+
+        smoothed_speed = sum(w * s for w, s in zip(weights, speeds))
+
+        smoothed[i].wind_direction_deg = round(smoothed_dir, 0)
+        smoothed[i].wind_speed_kmh = round(smoothed_speed, 1)
+
+    return smoothed
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -166,8 +200,12 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
     track_conds = forecast_track_conditions(current, forecast_data, surface)
     track_conditions_out = [TrackConditionPoint(**tc) for tc in track_conds]
 
+    # Smooth wind direction/speed before building the per-hour wind forecast.
+    # This removes single-hour model artefacts while preserving genuine trends.
+    smoothed_forecast = _smooth_wind_forecast(forecast_data)
+
     # Wind forecast with precipitation overlay data
-    wind_fc = forecast_wind_analysis(forecast_data, circuit.name, track_conditions=track_conds)
+    wind_fc = forecast_wind_analysis(smoothed_forecast, circuit.name, track_conditions=track_conds)
     wind_forecast_out = [WindForecastPoint(**wf) for wf in wind_fc]
 
     # Estimate recent rain accumulation from first few forecast hours
