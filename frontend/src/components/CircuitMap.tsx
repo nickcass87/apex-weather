@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { Circuit, CircuitCorner, WindForecastPoint } from "@/types";
 
 interface Props {
@@ -121,12 +121,15 @@ export default function CircuitMap({
   selectedHourIndex,
 }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
+  const particleContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersLayerRef = useRef<any>(null);
   const precipLayerRef = useRef<any>(null);
   const leafletRef = useRef<any>(null);
   const radarTileRef = useRef<any>(null);
-  const boundsFittedForMapRef = useRef(-1); // tracks which mapReady generation we last fitted
+  const satelliteTileRef = useRef<any>(null);
+  const cloudRingRef = useRef<any>(null);
+  const boundsFittedForMapRef = useRef(-1);
   const [mapReady, setMapReady] = useState(0);
 
   useEffect(() => {
@@ -143,6 +146,8 @@ export default function CircuitMap({
         markersLayerRef.current = null;
         precipLayerRef.current = null;
         radarTileRef.current = null;
+        satelliteTileRef.current = null;
+        cloudRingRef.current = null;
       }
 
       if (!mapRef.current) return;
@@ -183,10 +188,29 @@ export default function CircuitMap({
         dashArray: "4,8",
       }).addTo(map);
 
-      // RainViewer weather radar tile layer (free, no API key)
+      // RainViewer weather radar + satellite IR tile layers (free, no API key)
       try {
         const res = await fetch("https://api.rainviewer.com/public/weather-maps.json");
         const data = await res.json();
+
+        // Satellite infrared (cloud imagery) — rendered below radar
+        const irFrames = data?.satellite?.infrared;
+        if (irFrames && irFrames.length > 0) {
+          const latestIR = irFrames[irFrames.length - 1].path;
+          satelliteTileRef.current = L.tileLayer(
+            `https://tilecache.rainviewer.com${latestIR}/512/{z}/{x}/{y}/0/0_0.png`,
+            {
+              opacity: 0.30,
+              zIndex: 8,
+              tileSize: 512,
+              zoomOffset: -1,
+              maxNativeZoom: 6,
+              maxZoom: 19,
+            }
+          ).addTo(map);
+        }
+
+        // Precipitation radar — rendered above satellite
         const pastFrames = data?.radar?.past;
         if (pastFrames && pastFrames.length > 0) {
           const latestPath = pastFrames[pastFrames.length - 1].path;
@@ -203,7 +227,7 @@ export default function CircuitMap({
           ).addTo(map);
         }
       } catch {
-        // RainViewer unavailable — skip radar layer gracefully
+        // RainViewer unavailable — skip layers gracefully
       }
 
       precipLayerRef.current = L.layerGroup().addTo(map);
@@ -222,9 +246,35 @@ export default function CircuitMap({
         markersLayerRef.current = null;
         precipLayerRef.current = null;
         radarTileRef.current = null;
+        satelliteTileRef.current = null;
+        cloudRingRef.current = null;
       }
     };
   }, [circuit]);
+
+  // currentForecast must be declared before useMemo that depends on it
+  const currentForecast = windForecast[Math.min(selectedHourIndex, windForecast.length - 1)];
+
+  // Cloud particle animation — CSS-driven dots that drift in wind direction
+  const cloudParticles = useMemo(() => {
+    if (!currentForecast) return [];
+    const speed = currentForecast.speed_kmh ?? 0;
+    const dir = currentForecast.direction_deg ?? 0;
+    const cloudPct = currentForecast.cloud_cover_pct ?? 0;
+    if (cloudPct < 10 || speed < 1) return [];
+    const windToDeg = (dir + 180) % 360;
+    const count = Math.min(18, Math.max(4, Math.floor(cloudPct / 8)));
+    const durationSec = Math.max(6, 40 - speed * 0.6);
+    return Array.from({ length: count }, (_, i) => {
+      // golden-angle spread so particles don't clump
+      const startX = ((Math.sin(i * 2.39996) * 0.5 + 0.5) * 100);
+      const startY = ((Math.cos(i * 2.39996) * 0.5 + 0.5) * 100);
+      const delay = -((i / count) * durationSec); // negative = already in progress
+      const size = 8 + (i % 4) * 5;
+      const opacity = 0.10 + (cloudPct / 100) * 0.20;
+      return { startX, startY, delay, size, opacity, windToDeg, durationSec };
+    });
+  }, [currentForecast]);
 
   // Update wind markers + precipitation overlay when time changes
   useEffect(() => {
@@ -249,10 +299,27 @@ export default function CircuitMap({
     markersLayer.clearLayers();
     precipLayer.clearLayers();
 
-    if (!windForecast.length || !corners.length) return;
-
     const idx = Math.min(selectedHourIndex, windForecast.length - 1);
     const forecast = windForecast[idx];
+
+    // Update cloud cover ring opacity based on current forecast
+    const cloudPct = forecast?.cloud_cover_pct ?? 0;
+    if (cloudRingRef.current) {
+      cloudRingRef.current.setStyle({ fillOpacity: (cloudPct / 100) * 0.18, opacity: (cloudPct / 100) * 0.25 });
+    } else {
+      cloudRingRef.current = L.circle([circuit.latitude, circuit.longitude], {
+        radius: 45000,
+        fillColor: "#adb8c4",
+        fillOpacity: (cloudPct / 100) * 0.18,
+        color: "#adb8c4",
+        weight: 1,
+        opacity: (cloudPct / 100) * 0.25,
+        dashArray: "2,6",
+        interactive: false,
+      }).addTo(map);
+    }
+
+    if (!windForecast.length || !corners.length) return;
     if (!forecast) return;
 
     const windSpeed = forecast.speed_kmh;
@@ -362,11 +429,12 @@ export default function CircuitMap({
     });
   }, [mapReady, corners, windForecast, selectedHourIndex, circuit.latitude, circuit.longitude]);
 
-  // Get current forecast for precipitation badge
-  const currentForecast = windForecast[Math.min(selectedHourIndex, windForecast.length - 1)];
+  // Derived values for precipitation + cloud badges
   const intensity = currentForecast?.precipitation_intensity ?? 0;
   const probability = currentForecast?.precipitation_probability ?? 0;
   const condition = currentForecast?.track_condition ?? "dry";
+
+  const cloudPctDisplay = currentForecast?.cloud_cover_pct ?? null;
 
   return (
     <div
@@ -428,12 +496,75 @@ export default function CircuitMap({
               Cross
             </span>
           </div>
+          {/* Cloud cover badge */}
+          {cloudPctDisplay !== null && (
+            <div className="flex items-center gap-1 text-[8px] text-[var(--text-muted)]">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+              </svg>
+              <span style={{ color: cloudPctDisplay > 75 ? "#adb8c4" : "var(--text-muted)" }}>
+                {Math.round(cloudPctDisplay)}%
+              </span>
+            </div>
+          )}
           <span className="text-[9px] text-[var(--text-muted)] font-mono">
             {corners.length > 1 ? `${corners.length} pts` : "50km"}
           </span>
         </div>
       </div>
-      <div ref={mapRef} style={{ height: "380px", width: "100%" }} />
+      {/* Map container with cloud particle overlay */}
+      <div style={{ position: "relative", height: "380px", width: "100%" }}>
+        <div ref={mapRef} style={{ height: "100%", width: "100%" }} />
+        {/* Cloud drift particles — pointer-events:none so they don't block map interaction */}
+        {cloudParticles.length > 0 && (
+          <div
+            ref={particleContainerRef}
+            style={{
+              position: "absolute",
+              inset: 0,
+              overflow: "hidden",
+              pointerEvents: "none",
+              zIndex: 500,
+            }}
+          >
+            <style>{`
+              @keyframes cloudDrift {
+                0%   { transform: translate(0, 0) scale(1);   opacity: var(--cp-opacity); }
+                50%  { opacity: calc(var(--cp-opacity) * 1.3); }
+                100% { transform: translate(var(--cp-dx), var(--cp-dy)) scale(0.7); opacity: 0; }
+              }
+            `}</style>
+            {cloudParticles.map((p, i) => {
+              // Compute dx/dy in % of container based on wind direction
+              const rad = (p.windToDeg * Math.PI) / 180;
+              const travel = 30 + (p.size / 28) * 20; // larger blobs travel further
+              const dx = Math.sin(rad) * travel;
+              const dy = -Math.cos(rad) * travel;
+              return (
+                <div
+                  key={i}
+                  style={{
+                    position: "absolute",
+                    left: `${p.startX}%`,
+                    top: `${p.startY}%`,
+                    width: `${p.size}px`,
+                    height: `${p.size * 0.6}px`,
+                    borderRadius: "50%",
+                    background: "rgba(180,195,210,0.9)",
+                    filter: `blur(${p.size * 0.35}px)`,
+                    // CSS custom properties for keyframe
+                    ["--cp-opacity" as any]: p.opacity,
+                    ["--cp-dx" as any]: `${dx}%`,
+                    ["--cp-dy" as any]: `${dy}%`,
+                    animation: `cloudDrift ${p.durationSec}s ${p.delay}s linear infinite`,
+                    willChange: "transform, opacity",
+                  }}
+                />
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
