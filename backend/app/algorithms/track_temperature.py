@@ -135,11 +135,19 @@ def estimate_track_temperature(
     else:
         rain_cooling = 0.0
 
-    # Wind cooling effect: higher wind = more convective cooling
-    wind_cooling = wind_speed_kmh * 0.2
+    # Wind cooling effect: convective heat loss from asphalt surface.
+    # Physical basis: ~10 W/m²·°C convective coefficient at 10 m/s (36 km/h),
+    # which translates to roughly 0.09°C cooling per km/h of wind speed.
+    # Previous value of 0.2 overcooled by ~2x vs real-world F1 telemetry comparisons.
+    wind_cooling = wind_speed_kmh * 0.09
 
-    # Evaporative cooling from humidity (wet track cools more)
-    evap_cooling = (humidity_pct / 100.0) * 2.0
+    # Evaporative cooling — only meaningful on a wet/damp surface.
+    # On a dry track, ambient humidity does not directly cool the asphalt.
+    # Apply full effect when raining, 20% on a dry surface (residual moisture / boundary layer).
+    if precipitation_intensity > 0.05:
+        evap_cooling = (humidity_pct / 100.0) * 2.5  # wet surface: full evap cooling
+    else:
+        evap_cooling = (humidity_pct / 100.0) * 0.5  # dry surface: minimal effect
 
     track_temp = (
         air_temp_c
