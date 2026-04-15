@@ -33,7 +33,7 @@ BASE_URL = "https://api.open-meteo.com/v1/forecast"
 
 # Simple in-memory cache (same pattern as WeatherService)
 _cache: Dict[str, Dict[str, Any]] = {}
-_CACHE_TTL = 600  # 10 minutes
+_CACHE_TTL = 300  # 5 minutes
 
 
 async def fetch_multi_model(
@@ -77,7 +77,7 @@ async def fetch_multi_model(
         "hourly": ",".join(HOURLY_VARS),
         "models": ",".join(model_ids),
         "forecast_hours": hours,
-        "timezone": "auto",
+        "timezone": "UTC",
     }
 
     try:
@@ -182,7 +182,7 @@ async def fetch_real_weather(
         "models": "ecmwf_ifs025",   # best global NWP model
         "forecast_hours": hours,
         "wind_speed_unit": "kmh",
-        "timezone": "auto",
+        "timezone": "UTC",
     }
 
     try:

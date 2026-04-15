@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # In-memory TTL cache: key -> (timestamp, current_data, forecast_data)
 _cache: dict[str, Tuple[float, WeatherData, List[ForecastData]]] = {}
-CACHE_TTL_SECONDS = 600  # 10 minutes
+CACHE_TTL_SECONDS = 300  # 5 minutes
 
 
 def _cache_key(lat: float, lon: float) -> str:
