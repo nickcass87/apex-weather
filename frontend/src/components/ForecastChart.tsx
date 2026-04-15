@@ -56,6 +56,9 @@ export default function ForecastChart({ forecast, sessions, timeRange }: Props) 
   const minTemp = Math.min(...points.map((p) => p.temperature_c ?? 0));
   const tempRange = Math.max(maxTemp - minTemp, 5);
 
+  // Precipitation scale — normalise bars against the visible window max (floor 1 mm so light rain shows)
+  const maxPrecip = Math.max(1, ...points.map((p) => p.precipitation_intensity ?? 0));
+
   // Session overlays
   const sessionBands = (sessions || [])
     .map((s) => sessionOverlap(s, timeRange.startMs, timeRange.endMs))
@@ -111,10 +114,25 @@ export default function ForecastChart({ forecast, sessions, timeRange }: Props) 
             barOpacity = 0.65;
           }
 
+          // Precipitation bar height — min 15% so even drizzle is visible
+          const precipBarPct = intensity > 0.01
+            ? Math.max(15, (intensity / maxPrecip) * 100)
+            : rainProb > 5
+              ? Math.max(5, (rainProb / 100) * 12) // ghost bar for probability
+              : 0;
+
+          const precipColor = intensity >= 2.5
+            ? "#2563eb"
+            : intensity >= 0.5
+              ? "#3b82f6"
+              : intensity > 0.01
+                ? "#60a5fa"
+                : "#60a5fa44"; // faint for probability-only
+
           return (
             <div key={i} className="flex-1 flex flex-col items-center gap-0.5 relative">
-              {/* Rain intensity label */}
-              <span className="text-[8px] tabular-nums font-medium" style={{
+              {/* Rain label — mm if raining, % if probable */}
+              <span className="text-[8px] tabular-nums font-medium leading-none" style={{
                 color: isRaining ? "#60a5fa" : rainProb > 0 ? "var(--text-muted)" : "transparent",
               }}>
                 {isRaining
@@ -129,21 +147,26 @@ export default function ForecastChart({ forecast, sessions, timeRange }: Props) 
                   className="w-full h-full rounded-t-sm"
                   style={{ backgroundColor: barColor, opacity: barOpacity }}
                 />
-                {/* Rain intensity overlay: blue strip at bottom of bar */}
-                {isRaining && (
-                  <div
-                    className="absolute bottom-0 left-0 w-full rounded-t-sm"
-                    style={{
-                      height: `${Math.min(Math.max(intensity / 2 * 100, 15), 60)}%`,
-                      background: "linear-gradient(to top, #2563eb, #3b82f6)",
-                      opacity: 0.9,
-                    }}
-                  />
-                )}
               </div>
               <span className="text-[9px] text-[var(--text-tertiary)] tabular-nums font-medium">
                 {temp.toFixed(0)}°
               </span>
+              {/* Precipitation intensity bar — sits below temp label */}
+              <div className="w-full" style={{ height: "16px", display: "flex", alignItems: "flex-end" }}>
+                {precipBarPct > 0 && (
+                  <div
+                    className="w-full rounded-t-sm"
+                    style={{
+                      height: `${precipBarPct}%`,
+                      backgroundColor: precipColor,
+                      opacity: intensity > 0.01 ? 0.85 : 0.4,
+                    }}
+                    title={intensity > 0.01
+                      ? `${intensity.toFixed(2)} mm/hr`
+                      : `${rainProb}% probability`}
+                  />
+                )}
+              </div>
             </div>
           );
         })}
