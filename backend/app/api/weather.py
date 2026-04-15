@@ -39,11 +39,11 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
 
     surface = circuit.surface_type or "standard_asphalt"
 
-    # Only use live Tomorrow.io API for Jarama to conserve free tier API credits.
+    # Only use live Tomorrow.io API for Imola to conserve free tier API credits.
     # All other circuits get demo/synthetic data.
-    is_jarama = "Jarama" in (circuit.name or "")
+    is_imola = "Imola" in (circuit.name or "")
 
-    use_demo = not is_jarama or weather_service.is_demo_mode
+    use_demo = not is_imola or weather_service.is_demo_mode
 
     if use_demo:
         current = WeatherService._generate_demo_current(circuit.latitude, circuit.longitude)
