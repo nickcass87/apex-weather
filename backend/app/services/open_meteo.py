@@ -205,8 +205,16 @@ def _parse_real_weather(raw: dict, lat: float, lon: float) -> tuple:
 
     # ── Current conditions ──────────────────────────────────────────────────
     cur = raw.get("current", {})
+    # Use Open-Meteo's "current.time" as the observation timestamp (UTC)
+    _cur_time_str = cur.get("time")
+    try:
+        _obs_at = datetime.fromisoformat(str(_cur_time_str).replace("Z", "+00:00"))
+        if _obs_at.tzinfo is None:
+            _obs_at = _obs_at.replace(tzinfo=timezone.utc)
+    except Exception:
+        _obs_at = datetime.now(timezone.utc)
     current = WeatherData(
-        observed_at=datetime.now(timezone.utc),
+        observed_at=_obs_at,
         temperature_c=cur.get("temperature_2m"),
         humidity_pct=cur.get("relative_humidity_2m"),
         wind_speed_kmh=cur.get("wind_speed_10m"),
@@ -222,11 +230,25 @@ def _parse_real_weather(raw: dict, lat: float, lon: float) -> tuple:
         weather_code=cur.get("weather_code"),
     )
 
-    # First hourly rain probability → precipitation_probability for current
+    # Current-hour rain probability — find the hourly slot closest to now
     hourly = raw.get("hourly", {})
     probs = hourly.get("precipitation_probability", [None])
-    if probs:
-        current.precipitation_probability = probs[0]
+    hourly_times = hourly.get("time", [])
+    now_utc_for_prob = datetime.now(timezone.utc)
+    current_prob = probs[0] if probs else None
+    best_diff = float("inf")
+    for j, t in enumerate(hourly_times):
+        try:
+            dt_j = datetime.fromisoformat(t.replace("Z", "+00:00"))
+            if dt_j.tzinfo is None:
+                dt_j = dt_j.replace(tzinfo=timezone.utc)
+            diff = abs((dt_j - now_utc_for_prob).total_seconds())
+            if diff < best_diff:
+                best_diff = diff
+                current_prob = _safe(probs, j) if j < len(probs) else current_prob
+        except Exception:
+            pass
+    current.precipitation_probability = current_prob
 
     # ── Hourly forecast ─────────────────────────────────────────────────────
     times = hourly.get("time", [])
