@@ -86,8 +86,8 @@ async def fetch_multi_model(
             resp.raise_for_status()
             data = resp.json()
     except Exception as e:
-        logger.error("Open-Meteo multi-model fetch FAILED (%s): %s", type(e).__name__, e)
-        raise  # Expose the actual error for diagnosis
+        logger.warning("Open-Meteo multi-model fetch failed (%s): %s", type(e).__name__, e)
+        return {"fetched_at": _iso_now(), "models": []}
 
     hourly = data.get("hourly", {})
     times = hourly.get("time", [])
