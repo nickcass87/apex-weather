@@ -15,8 +15,8 @@ function windDirectionLabel(deg: number | null): string {
 function rainEtaDisplay(minutes: number | null, intensity: number | null): string {
   if (minutes === null) return "No rain";
   if (minutes <= 0) {
-    // Distinguish "raining now" from "rain arriving in <1 min"
-    if (intensity !== null && intensity >= 0.05) return "Raining Now";
+    // 0.3 mm/hr threshold — light drizzle (< 0.3) is often imperceptible/model noise
+    if (intensity !== null && intensity >= 0.3) return "Raining Now";
     return "Imminent";
   }
   if (minutes < 60) return `${Math.round(minutes)} min`;
@@ -72,12 +72,15 @@ function Tile({
 }
 
 export default function WeatherTiles({ weather }: Props) {
+  const isActiveRain = (weather.precipitation_intensity ?? 0) >= 0.3;
   const rainColor =
-    weather.rain_eta_minutes !== null && weather.rain_eta_minutes < 30
+    isActiveRain
       ? "var(--accent-red)"
-      : weather.rain_eta_minutes !== null
-        ? "var(--accent-yellow)"
-        : "var(--accent-green)";
+      : weather.rain_eta_minutes !== null && weather.rain_eta_minutes < 30
+        ? "var(--accent-red)"
+        : weather.rain_eta_minutes !== null
+          ? "var(--accent-yellow)"
+          : "var(--accent-green)";
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -108,15 +111,15 @@ export default function WeatherTiles({ weather }: Props) {
         unit="%"
       />
       <Tile
-        label={(weather.precipitation_intensity ?? 0) >= 0.05 ? "Rain Intensity" : "Rain Prob"}
+        label={(weather.precipitation_intensity ?? 0) >= 0.3 ? "Rain Intensity" : "Rain Prob"}
         value={
-          (weather.precipitation_intensity ?? 0) >= 0.05
+          (weather.precipitation_intensity ?? 0) >= 0.3
             ? (weather.precipitation_intensity?.toFixed(1) ?? "--")
             : (weather.precipitation_probability?.toFixed(0) ?? "--")
         }
-        unit={(weather.precipitation_intensity ?? 0) >= 0.05 ? "mm/hr" : "%"}
+        unit={(weather.precipitation_intensity ?? 0) >= 0.3 ? "mm/hr" : "%"}
         accentColor={
-          (weather.precipitation_intensity ?? 0) >= 0.05
+          (weather.precipitation_intensity ?? 0) >= 0.3
             ? "var(--accent-red)"
             : (weather.precipitation_probability ?? 0) > 60
               ? "var(--accent-red)"
