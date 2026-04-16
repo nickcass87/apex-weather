@@ -151,6 +151,18 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
             forecast_data = WeatherService._generate_demo_forecast(circuit.latitude, circuit.longitude, 24)
             use_demo = True
 
+    # Physical consistency corrections — weather APIs sometimes return internally
+    # inconsistent data (e.g. rain with clear-sky cloud cover or high UV index).
+    # Correct these before any downstream computation.
+    precip = current.precipitation_intensity or 0
+    if precip >= 0.05:
+        # Rain requires clouds — clamp cloud cover to a minimum of 85%
+        if (current.cloud_cover_pct or 0) < 85:
+            current.cloud_cover_pct = 85.0
+        # UV index should be near-zero when raining (cloud/rain attenuation)
+        if (current.uv_index or 0) > 2:
+            current.uv_index = max(0.0, (current.uv_index or 0) * 0.1)
+
     # Apply per-circuit ECMWF bias correction (non-blocking: warm cache hit)
     cal_stats = await get_calibration_for_circuit(
         circuit_id=str(circuit.id),
