@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # In-memory TTL cache: key -> (timestamp, current_data, forecast_data)
 _cache: dict[str, Tuple[float, WeatherData, List[ForecastData]]] = {}
-CACHE_TTL_SECONDS = 600  # 10 minutes
+CACHE_TTL_SECONDS = 300  # 5 minutes
 
 
 def _cache_key(lat: float, lon: float) -> str:
@@ -112,47 +112,94 @@ class WeatherService:
     @staticmethod
     def _generate_demo_current(lat: float, lon: float) -> WeatherData:
         """Generate realistic demo weather based on latitude."""
-        random.seed(int(abs(lat * 100 + lon * 100)) % 10000)
-        base_temp = 30 - abs(lat) * 0.4 + random.uniform(-3, 3)
+        rng = random.Random(int(abs(lat * 100 + lon * 100)) % 10000)
+        base_temp = 30 - abs(lat) * 0.4 + rng.gauss(0, 2)
+        wind_speed = rng.uniform(5, 22)
+        wind_dir = rng.uniform(0, 360)
         return WeatherData(
             observed_at=datetime.now(timezone.utc),
             temperature_c=round(base_temp, 1),
-            humidity_pct=round(random.uniform(35, 85), 0),
-            wind_speed_kmh=round(random.uniform(5, 35), 1),
-            wind_direction_deg=round(random.uniform(0, 360), 0),
-            wind_gust_kmh=round(random.uniform(10, 50), 1),
-            precipitation_intensity=round(random.uniform(0, 0.5), 2),
-            precipitation_probability=round(random.uniform(0, 60), 0),
-            cloud_cover_pct=round(random.uniform(10, 80), 0),
-            visibility_km=round(random.uniform(8, 20), 1),
-            pressure_hpa=round(random.uniform(1008, 1025), 1),
-            uv_index=round(random.uniform(1, 9), 0),
-            dew_point_c=round(base_temp - random.uniform(5, 15), 1),
+            humidity_pct=round(rng.uniform(40, 70), 0),
+            wind_speed_kmh=round(wind_speed, 1),
+            wind_direction_deg=round(wind_dir, 0),
+            wind_gust_kmh=round(wind_speed * rng.uniform(1.15, 1.45), 1),
+            precipitation_intensity=0.0,
+            precipitation_probability=round(rng.uniform(0, 20), 0),
+            cloud_cover_pct=round(rng.uniform(15, 60), 0),
+            visibility_km=round(rng.uniform(12, 25), 1),
+            pressure_hpa=round(rng.uniform(1010, 1022), 1),
+            uv_index=round(rng.uniform(2, 7), 0),
+            dew_point_c=round(base_temp - rng.uniform(6, 14), 1),
             weather_code=1000,
         )
 
     @staticmethod
     def _generate_demo_forecast(lat: float, lon: float, hours: int) -> List[ForecastData]:
-        """Generate demo hourly forecast with realistic patterns."""
-        random.seed(int(abs(lat * 100 + lon * 100)) % 10000 + 1)
+        """Generate demo hourly forecast with smooth, physically-plausible patterns.
+
+        Uses a random walk for wind direction/speed so adjacent hours are correlated,
+        and groups precipitation into a single realistic weather event rather than
+        scattering random rain probabilities each hour.
+        """
+        rng = random.Random(int(abs(lat * 100 + lon * 100)) % 10000 + 1)
         base_temp = 30 - abs(lat) * 0.4
         now = datetime.now(timezone.utc)
+
+        # Persistent wind state — random walk, not independent per hour
+        wind_dir = rng.uniform(0, 360)
+        wind_speed = rng.uniform(8, 20)
+
+        # One optional rain event spanning 2–6 contiguous hours
+        has_rain = rng.random() < 0.35
+        rain_start_h = rng.randint(4, 16) if has_rain else hours + 1
+        rain_duration_h = rng.randint(2, 6) if has_rain else 0
+        rain_peak_mm = rng.uniform(1.0, 4.5) if has_rain else 0.0
+
+        # Base cloud and humidity that drift slowly
+        base_cloud = rng.uniform(15, 50)
+        base_humidity = rng.uniform(45, 62)
+
         forecasts = []
         for h in range(hours):
             hour_offset = (now.hour + h) % 24
+
+            # Temperature: smooth diurnal cycle + tiny noise
             diurnal = math.sin((hour_offset - 6) * math.pi / 12) * 4
-            temp = base_temp + diurnal + random.uniform(-1, 1)
-            rain_prob = max(0, min(100, random.uniform(-10, 40) + (20 if 12 <= hour_offset <= 18 else 0)))
+            temp = base_temp + diurnal + rng.gauss(0, 0.4)
+
+            # Wind direction: smooth random walk ±8° per hour
+            wind_dir = (wind_dir + rng.gauss(0, 8)) % 360
+            # Wind speed: diurnal pattern (calmer at night, peaks ~14:00) + mean reversion
+            speed_diurnal = 1.0 + 0.3 * max(0, math.sin((hour_offset - 9) * math.pi / 12))
+            target_speed = wind_speed * speed_diurnal
+            wind_speed = max(2.0, wind_speed * 0.8 + target_speed * 0.2 + rng.gauss(0, 1.0))
+            gust = wind_speed * rng.uniform(1.15, 1.45)
+
+            # Rain event: smooth bell-curve intensity within the event window
+            in_rain = rain_start_h <= h < rain_start_h + rain_duration_h
+            if in_rain:
+                progress = (h - rain_start_h) / max(1, rain_duration_h - 1)
+                envelope = math.sin(progress * math.pi)
+                precip_intensity = max(0.0, rain_peak_mm * envelope * rng.uniform(0.85, 1.15))
+                rain_prob = min(90.0, 50 + 40 * envelope)
+            else:
+                precip_intensity = 0.0
+                rain_prob = max(0.0, rng.uniform(-5, 12))
+
+            # Cloud and humidity: elevated during rain, otherwise slow drift
+            cloud = min(95.0, base_cloud + rng.gauss(0, 4) + (40 if in_rain else 0))
+            humidity = min(95.0, base_humidity + rng.gauss(0, 2) + (22 if in_rain else 0))
+
             forecasts.append(ForecastData(
                 forecast_time=now + timedelta(hours=h),
                 temperature_c=round(temp, 1),
-                humidity_pct=round(random.uniform(40, 80), 0),
-                wind_speed_kmh=round(random.uniform(5, 30), 1),
-                wind_direction_deg=round(random.uniform(0, 360), 0),
-                wind_gust_kmh=round(random.uniform(10, 45), 1),
-                precipitation_probability=round(rain_prob, 0),
-                precipitation_intensity=round(rain_prob / 100 * random.uniform(0, 2), 2) if rain_prob > 20 else 0,
-                cloud_cover_pct=round(random.uniform(10, 70), 0),
-                weather_code=1000 if rain_prob < 30 else 4001,
+                humidity_pct=round(max(20.0, humidity), 0),
+                wind_speed_kmh=round(wind_speed, 1),
+                wind_direction_deg=round(wind_dir, 0),
+                wind_gust_kmh=round(gust, 1),
+                precipitation_probability=round(max(0.0, rain_prob), 0),
+                precipitation_intensity=round(precip_intensity, 2) if rain_prob > 20 else 0,
+                cloud_cover_pct=round(max(5.0, min(100.0, cloud)), 0),
+                weather_code=4001 if in_rain else 1000,
             ))
         return forecasts
