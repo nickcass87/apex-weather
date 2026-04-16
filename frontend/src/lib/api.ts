@@ -1,4 +1,4 @@
-import { Circuit, WeatherResponse, ModelComparisonResponse, NowcastResponse, CalibrationStats } from "@/types";
+import { Circuit, WeatherResponse, NowcastResponse, CalibrationStats } from "@/types";
 
 // Route all API calls through the Next.js proxy to avoid CORS issues.
 // The proxy forwards to NEXT_PUBLIC_API_URL server-side.
@@ -28,9 +28,6 @@ export async function getWeather(circuitId: string): Promise<WeatherResponse> {
   return fetchApi<WeatherResponse>(`/weather/${circuitId}`);
 }
 
-export async function getModelComparison(circuitId: string): Promise<ModelComparisonResponse> {
-  return fetchApi<ModelComparisonResponse>(`/weather/${circuitId}/models`);
-}
 
 export async function getNowcast(circuitId: string): Promise<NowcastResponse> {
   return fetchApi<NowcastResponse>(`/weather/${circuitId}/nowcast`);

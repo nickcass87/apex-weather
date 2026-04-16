@@ -52,7 +52,7 @@ export default function Dashboard() {
   const [panOffsetMs, setPanOffsetMs] = useState(0);
 
   const selectedCircuit = circuits.find((c) => c.id === selectedId) || null;
-  const { weather, modelComparison, nowcast, calibration, loading, error, refetch } = useWeather(selectedId);
+  const { weather, modelComparison, nowcast, calibration, loading, error, refetch } = useWeather(selectedId, selectedCircuit);
   const { sessions, addSession, removeSession } = useLocalSessions(selectedId);
 
   useEffect(() => {
