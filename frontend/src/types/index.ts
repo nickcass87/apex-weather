@@ -30,6 +30,10 @@ export interface WeatherCurrent {
   weather_code: number | null;
   track_temperature_c: number | null;
   rain_eta_minutes: number | null;
+  wet_bulb_c: number | null;
+  dew_point_spread_c: number | null;
+  pressure_trend: string | null;
+  pressure_trend_hpa_3h: number | null;
 }
 
 export interface WeatherForecastPoint {
@@ -43,6 +47,11 @@ export interface WeatherForecastPoint {
   cloud_cover_pct: number | null;
   weather_code: number | null;
   track_temperature_c: number | null;
+  dew_point_c?: number | null;
+  wind_gust_kmh?: number | null;
+  pressure_hpa?: number | null;
+  solar_ghi_wm2?: number | null;
+  precip_type?: number | null;
 }
 
 export interface Alert {
@@ -69,6 +78,9 @@ export interface WindAnalysis {
   straight_bearing: number;
   impact_level: string;
   impact_details: string[];
+  veer_trend: string;
+  veer_rotation_deg: number;
+  veer_meaning: string;
 }
 
 export interface TrackConditionPoint {
@@ -90,18 +102,6 @@ export interface DryingEstimate {
   humidity_factor?: number;
   solar_factor?: number;
   drain_factor?: number;
-}
-
-export interface StrategyPoint {
-  hour: number;
-  forecast_time: string;
-  track_temp_c: number;
-  condition: string;
-  compound: string;
-  compound_alternative: string | null;
-  compound_reason: string;
-  rain_probability: number;
-  pit_recommendation: string | null;
 }
 
 export interface GripEstimate {
@@ -148,6 +148,27 @@ export interface TimeRange {
 
 export type ZoomLevel = "6h" | "12h" | "24h";
 
+export interface NowcastPoint {
+  forecast_time: string;
+  temperature_c: number | null;
+  precipitation_intensity: number | null;
+  precipitation_probability: number | null;
+  wind_speed_kmh: number | null;
+  wind_direction_deg: number | null;
+  cloud_cover_pct: number | null;
+  precip_type: number | null;
+}
+
+export interface NowcastResponse {
+  circuit_id: string;
+  circuit_name: string;
+  fetched_at: string;
+  points: NowcastPoint[];
+  has_rain_60min: boolean;
+  peak_intensity_mmhr: number;
+  rain_onset_minutes: number | null;
+}
+
 export interface WeatherResponse {
   circuit_id: string;
   circuit_name: string;
@@ -159,10 +180,33 @@ export interface WeatherResponse {
   wind_analysis: WindAnalysis | null;
   track_conditions: TrackConditionPoint[];
   drying_estimate: DryingEstimate | null;
-  strategy_timeline: StrategyPoint[];
   grip: GripEstimate | null;
   wind_forecast: WindForecastPoint[];
   circuit_corners: CircuitCorner[];
+  nowcast?: NowcastResponse;
+}
+
+export interface CalibrationStats {
+  circuit_id: string;
+  computed_at: string;
+  backtest_days: number;
+  sample_count: number;
+  is_available: boolean;
+
+  temp_bias_c: number;
+  temp_mae_c: number;
+  temp_rmse_c: number;
+
+  precip_ratio: number;
+  precip_mae_mmhr: number;
+  precip_rmse_mmhr: number;
+
+  wind_bias_kmh: number;
+  wind_mae_kmh: number;
+  wind_rmse_kmh: number;
+
+  skill_score: number;
+  correction_summary: string;
 }
 
 // ── Multi-model comparison ──

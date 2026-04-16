@@ -24,6 +24,8 @@ class WeatherData:
     uv_index: Optional[float] = None
     dew_point_c: Optional[float] = None
     weather_code: Optional[int] = None
+    solar_ghi_wm2: Optional[float] = None
+    precip_type: Optional[int] = None  # 0=N/A, 1=Rain, 2=Snow, 3=Freezing, 4=Ice
 
 
 @dataclass
@@ -39,6 +41,10 @@ class ForecastData:
     precipitation_intensity: Optional[float] = None
     cloud_cover_pct: Optional[float] = None
     weather_code: Optional[int] = None
+    dew_point_c: Optional[float] = None
+    pressure_hpa: Optional[float] = None
+    solar_ghi_wm2: Optional[float] = None
+    precip_type: Optional[int] = None  # 0=N/A, 1=Rain, 2=Snow, 3=Freezing, 4=Ice
 
 
 class WeatherProvider(ABC):

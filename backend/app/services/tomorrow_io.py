@@ -4,9 +4,23 @@ from __future__ import annotations
 import httpx
 from datetime import datetime, timezone
 from typing import Optional, List
+from dataclasses import dataclass
 
 from app.core.config import settings
 from app.services.weather_provider import WeatherProvider, WeatherData, ForecastData
+
+
+@dataclass
+class NowcastPoint:
+    """1-minute nowcast data point."""
+    forecast_time: datetime
+    temperature_c: Optional[float] = None
+    precipitation_intensity: Optional[float] = None
+    precipitation_probability: Optional[float] = None
+    wind_speed_kmh: Optional[float] = None
+    wind_direction_deg: Optional[float] = None
+    cloud_cover_pct: Optional[float] = None
+    precip_type: Optional[int] = None
 
 
 class TomorrowIOProvider(WeatherProvider):
@@ -45,6 +59,8 @@ class TomorrowIOProvider(WeatherProvider):
             uv_index=values.get("uvIndex"),
             dew_point_c=values.get("dewPoint"),
             weather_code=values.get("weatherCode"),
+            solar_ghi_wm2=values.get("solarGHI"),
+            precip_type=values.get("precipitationType"),
         )
 
     async def get_forecast(self, lat: float, lon: float, hours: int = 24) -> List[ForecastData]:
@@ -76,8 +92,47 @@ class TomorrowIOProvider(WeatherProvider):
                 precipitation_intensity=values.get("rainIntensity") or values.get("precipitationIntensity") or 0,
                 cloud_cover_pct=values.get("cloudCover"),
                 weather_code=values.get("weatherCode"),
+                dew_point_c=values.get("dewPoint"),
+                pressure_hpa=values.get("pressureSurfaceLevel"),
+                solar_ghi_wm2=values.get("solarGHI"),
+                precip_type=values.get("precipitationType"),
             ))
         return forecasts
+
+    async def get_nowcast(self, lat: float, lon: float, minutes: int = 60) -> List[NowcastPoint]:
+        """Fetch 1-minute nowcast from Tomorrow.io for the next `minutes` minutes."""
+        params = {
+            "location": f"{lat},{lon}",
+            "apikey": self.api_key,
+            "timesteps": "1m",
+        }
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(self.forecast_url, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+
+        timelines = data.get("timelines", {})
+        minutely = timelines.get("minutely", [])
+
+        points = []
+        for entry in minutely[:minutes]:
+            values = entry.get("values", {})
+            fc_time = entry.get("time", "")
+            try:
+                dt = datetime.fromisoformat(fc_time.replace("Z", "+00:00"))
+            except Exception:
+                dt = datetime.now(timezone.utc)
+            points.append(NowcastPoint(
+                forecast_time=dt,
+                temperature_c=values.get("temperature"),
+                precipitation_intensity=values.get("rainIntensity") or values.get("precipitationIntensity") or 0,
+                precipitation_probability=values.get("precipitationProbability"),
+                wind_speed_kmh=self._ms_to_kmh(values.get("windSpeed")),
+                wind_direction_deg=values.get("windDirection"),
+                cloud_cover_pct=values.get("cloudCover"),
+                precip_type=values.get("precipitationType"),
+            ))
+        return points
 
     @staticmethod
     def _ms_to_kmh(val: Optional[float]) -> Optional[float]:

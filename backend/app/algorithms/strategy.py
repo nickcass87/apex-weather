@@ -13,16 +13,22 @@ from app.services.weather_provider import WeatherData, ForecastData
 from app.algorithms.drying_model import classify_track_condition, TRACK_DRY, TRACK_DAMP, TRACK_WET, TRACK_VERY_WET, TRACK_FLOODED
 
 
-# Tire compound temperature windows (track surface temp in °C)
+# Tire compound temperature windows (track surface temp in °C).
+# Based on Pirelli published operating ranges for 2022-2024 F1 compounds
+# and GT/endurance equivalent (C1=hard through C5=soft):
+#   Soft (C4/C5): usable from ~15°C — common in cool qualifying sessions
+#   Medium (C3): broader window, goes down to ~20°C
+#   Hard (C1/C2): thermally demanding, needs 30°C+ to activate properly
+# GT/WEC compounds follow similar but wider windows (+5°C each direction).
 COMPOUND_WINDOWS = {
-    "hypersoft": {"min": 20, "optimal_min": 25, "optimal_max": 35, "max": 40},
-    "ultrasoft":  {"min": 22, "optimal_min": 28, "optimal_max": 40, "max": 45},
-    "supersoft":  {"min": 25, "optimal_min": 30, "optimal_max": 45, "max": 50},
-    "soft":       {"min": 28, "optimal_min": 35, "optimal_max": 50, "max": 55},
-    "medium":     {"min": 30, "optimal_min": 38, "optimal_max": 55, "max": 60},
-    "hard":       {"min": 35, "optimal_min": 42, "optimal_max": 60, "max": 65},
-    "intermediate": {"min": 5, "optimal_min": 10, "optimal_max": 40, "max": 50},
-    "wet":        {"min": 5, "optimal_min": 10, "optimal_max": 35, "max": 45},
+    "hypersoft": {"min": 15, "optimal_min": 20, "optimal_max": 38, "max": 48},
+    "ultrasoft":  {"min": 17, "optimal_min": 22, "optimal_max": 42, "max": 52},
+    "supersoft":  {"min": 18, "optimal_min": 25, "optimal_max": 45, "max": 55},
+    "soft":       {"min": 15, "optimal_min": 22, "optimal_max": 48, "max": 58},
+    "medium":     {"min": 20, "optimal_min": 28, "optimal_max": 55, "max": 62},
+    "hard":       {"min": 30, "optimal_min": 38, "optimal_max": 62, "max": 68},
+    "intermediate": {"min": 3, "optimal_min": 5, "optimal_max": 38, "max": 48},
+    "wet":        {"min": 0, "optimal_min": 3, "optimal_max": 28, "max": 40},
 }
 
 
@@ -117,18 +123,34 @@ def generate_strategy_timeline(
 
     Returns list of hourly strategy snapshots.
     """
+    from app.algorithms.drying_model import SURFACE_DRAINAGE
     timeline = []
+    accumulated_rain_mm = 0.0  # Track rolling moisture accumulation
 
     for i, (point, track_temp) in enumerate(zip(forecast[:24], track_temps[:24])):
         intensity = point.precipitation_intensity or 0
         prob = point.precipitation_probability or 0
         humidity = point.humidity_pct or 50
         wind = point.wind_speed_kmh or 10
+        temp = point.temperature_c or 20
+        cloud = point.cloud_cover_pct or 50
+
+        # Track accumulated rain and evaporation (same logic as forecast_track_conditions)
+        if intensity > 0.05 or prob > 50:
+            accumulated_rain_mm += intensity * 1.0
+        else:
+            surface = SURFACE_DRAINAGE.get(surface_type, SURFACE_DRAINAGE["standard_asphalt"])
+            temp_factor = max(0.3, 1.0 + (temp - 15.0) / 20.0)
+            wind_factor = 1.0 + (wind / 40.0)
+            humidity_factor = max(0.2, (100.0 - humidity) / 50.0)
+            evap_per_hour = 0.5 * temp_factor * wind_factor * humidity_factor / surface["drain_rate"]
+            accumulated_rain_mm = max(0.0, accumulated_rain_mm - evap_per_hour)
 
         condition = classify_track_condition(
             precipitation_intensity=intensity,
             precipitation_probability=prob,
             humidity_pct=humidity,
+            recent_rain_mm=accumulated_rain_mm,
         )
 
         compound = recommend_compound(

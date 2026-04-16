@@ -1,12 +1,13 @@
-import { Circuit, WeatherResponse, ModelComparisonResponse } from "@/types";
+import { Circuit, WeatherResponse, NowcastResponse, CalibrationStats } from "@/types";
 
-// Call backend directly — NEXT_PUBLIC_API_URL is inlined at build time
-const BACKEND =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const API_BASE = `${BACKEND}/api/v1`;
+// Route all API calls through the Next.js proxy to avoid CORS issues.
+// The proxy forwards to NEXT_PUBLIC_API_URL server-side.
+const PROXY_BASE = "/api/proxy";
 
 async function fetchApi<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  // Strip leading slash for proxy path construction
+  const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+  const res = await fetch(`${PROXY_BASE}/${cleanPath}`, {
     cache: "no-store",
   });
   if (!res.ok) {
@@ -27,6 +28,11 @@ export async function getWeather(circuitId: string): Promise<WeatherResponse> {
   return fetchApi<WeatherResponse>(`/weather/${circuitId}`);
 }
 
-export async function getModelComparison(circuitId: string): Promise<ModelComparisonResponse> {
-  return fetchApi<ModelComparisonResponse>(`/weather/${circuitId}/models`);
+
+export async function getNowcast(circuitId: string): Promise<NowcastResponse> {
+  return fetchApi<NowcastResponse>(`/weather/${circuitId}/nowcast`);
+}
+
+export async function getCalibration(circuitId: string): Promise<CalibrationStats> {
+  return fetchApi<CalibrationStats>(`/weather/${circuitId}/calibration`);
 }

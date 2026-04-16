@@ -135,11 +135,19 @@ def estimate_track_temperature(
     else:
         rain_cooling = 0.0
 
-    # Wind cooling effect: higher wind = more convective cooling
-    wind_cooling = wind_speed_kmh * 0.2
+    # Wind cooling effect: convective heat loss from asphalt surface.
+    # Physical basis: ~10 W/m²·°C convective coefficient at 10 m/s (36 km/h),
+    # which translates to roughly 0.09°C cooling per km/h of wind speed.
+    # Previous value of 0.2 overcooled by ~2x vs real-world F1 telemetry comparisons.
+    wind_cooling = wind_speed_kmh * 0.09
 
-    # Evaporative cooling from humidity (wet track cools more)
-    evap_cooling = (humidity_pct / 100.0) * 2.0
+    # Evaporative cooling — only meaningful on a wet/damp surface.
+    # On a dry track, ambient humidity does not directly cool the asphalt.
+    # Apply full effect when raining, 20% on a dry surface (residual moisture / boundary layer).
+    if precipitation_intensity > 0.05:
+        evap_cooling = (humidity_pct / 100.0) * 2.5  # wet surface: full evap cooling
+    else:
+        evap_cooling = (humidity_pct / 100.0) * 0.5  # dry surface: minimal effect
 
     track_temp = (
         air_temp_c
@@ -163,6 +171,7 @@ def estimate_track_temp_from_forecast(
     longitude: Optional[float] = None,
     forecast_time: Optional[datetime] = None,
     precipitation_intensity: float = 0.0,
+    solar_ghi_wm2: Optional[float] = None,
 ) -> float:
     """Estimate track temp for a forecast point, with solar position awareness.
 
@@ -187,6 +196,19 @@ def estimate_track_temp_from_forecast(
     Returns:
         Estimated track surface temperature in Celsius.
     """
+    # If the provider supplies a direct GHI measurement, use it directly — it's
+    # more accurate than our estimated solar model.
+    if solar_ghi_wm2 is not None:
+        return estimate_track_temperature(
+            air_temp_c=air_temp_c,
+            solar_radiation_wm2=solar_ghi_wm2,
+            wind_speed_kmh=wind_speed_kmh,
+            cloud_cover_pct=cloud_cover_pct,
+            humidity_pct=humidity_pct,
+            surface_type=surface_type,
+            precipitation_intensity=precipitation_intensity,
+        )
+
     clear_sky_radiation = 800.0
 
     if latitude is not None and longitude is not None and forecast_time is not None:

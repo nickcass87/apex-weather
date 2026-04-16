@@ -46,8 +46,13 @@ def classify_track_condition(
     Uses current intensity + recent accumulation + atmospheric signals.
     Even trace amounts of rain (0.05 mm/hr) leave a damp surface.
     """
-    # Active rain intensity thresholds
-    if precipitation_intensity >= 7.5:
+    # Active rain intensity thresholds.
+    # FIA red-flag / race-suspension criteria:
+    #   >5 mm/hr sustained = standing water / aquaplaning risk → FLOODED
+    #   2.5-5 mm/hr = significant standing water → VERY_WET
+    #   0.5-2.5 mm/hr = wet racing line → WET
+    #   0.05-0.5 mm/hr = damp/slippery → DAMP
+    if precipitation_intensity >= 5.0:
         return TRACK_FLOODED
     elif precipitation_intensity >= 2.5:
         return TRACK_VERY_WET

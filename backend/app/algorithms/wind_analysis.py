@@ -401,3 +401,36 @@ def _assess_wind_impact(speed: float, gust: float, crosswind: float) -> Dict[str
         details.append("Gusty conditions — inconsistent aerodynamic loads")
 
     return {"level": level, "details": details}
+
+
+def compute_wind_veer(forecast: "List[ForecastData]") -> dict:
+    """Compute wind veer/backing trend over the first 24 forecast hours.
+
+    Veering = clockwise direction shift (e.g., S→W→N) — indicates dry air advection.
+    Backing = counter-clockwise shift (e.g., N→W→S) — indicates moist/unstable air.
+    Uses circular angular differences to handle the 0°/360° wrap-around correctly.
+    """
+    dirs = [p.wind_direction_deg or 0.0 for p in forecast[:24]]
+    if len(dirs) < 2:
+        return {"veer_trend": "steady", "veer_rotation_deg": 0.0, "veer_meaning": "Insufficient data"}
+
+    total_rotation = 0.0
+    for i in range(1, len(dirs)):
+        diff = (dirs[i] - dirs[i - 1] + 180) % 360 - 180
+        total_rotation += diff
+
+    if total_rotation > 15:
+        trend = "veering"
+        meaning = "Clockwise rotation — dry air advection, improving conditions"
+    elif total_rotation < -15:
+        trend = "backing"
+        meaning = "Counter-clockwise rotation — moist/unstable air approaching"
+    else:
+        trend = "steady"
+        meaning = "Wind direction stable over 24 h"
+
+    return {
+        "veer_trend": trend,
+        "veer_rotation_deg": round(total_rotation, 1),
+        "veer_meaning": meaning,
+    }

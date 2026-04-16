@@ -16,6 +16,8 @@ import ConfidenceIndicator from "@/components/ConfidenceIndicator";
 import TrackTempChart from "@/components/TrackTempChart";
 import RainIntensityChart from "@/components/RainIntensityChart";
 import ModelComparisonPanel from "@/components/ModelComparisonPanel";
+import NowcastPanel from "@/components/NowcastPanel";
+import CalibrationPanel from "@/components/CalibrationPanel";
 import WindAnalysisPanel from "@/components/WindAnalysisPanel";
 import SurfaceConditionsPanel from "@/components/SurfaceConditionsPanel";
 import GripIndicator from "@/components/GripIndicator";
@@ -50,7 +52,7 @@ export default function Dashboard() {
   const [panOffsetMs, setPanOffsetMs] = useState(0);
 
   const selectedCircuit = circuits.find((c) => c.id === selectedId) || null;
-  const { weather, modelComparison, loading, error, refetch } = useWeather(selectedId);
+  const { weather, modelComparison, nowcast, calibration, loading, error, refetch } = useWeather(selectedId, selectedCircuit);
   const { sessions, addSession, removeSession } = useLocalSessions(selectedId);
 
   useEffect(() => {
@@ -64,9 +66,9 @@ export default function Dashboard() {
       .then((data) => {
         setCircuits(data);
         if (data.length > 0 && !selectedId) {
-          // Default to Jarama circuit; fall back to first circuit
-          const jarama = data.find((c: Circuit) => c.name.includes("Jarama"));
-          setSelectedId(jarama ? jarama.id : data[0].id);
+          // Default to Imola circuit; fall back to first circuit
+          const imola = data.find((c: Circuit) => c.name.includes("Imola"));
+          setSelectedId(imola ? imola.id : data[0].id);
         }
       })
       .catch((err) => setCircuitsError(err.message));
@@ -344,6 +346,16 @@ export default function Dashboard() {
                   timeRange={timeRange}
                 />
               </div>
+
+              {/* ─── Nowcast ─── */}
+              {nowcast && nowcast.points.length > 0 && (
+                <NowcastPanel nowcast={nowcast} />
+              )}
+
+              {/* ─── Calibration ─── */}
+              {calibration && (
+                <CalibrationPanel calibration={calibration} />
+              )}
             </div>
           )}
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { Circuit, CircuitCorner, WindForecastPoint } from "@/types";
 
 interface Props {
@@ -121,11 +121,15 @@ export default function CircuitMap({
   selectedHourIndex,
 }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
+  const particleContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
   const markersLayerRef = useRef<any>(null);
   const precipLayerRef = useRef<any>(null);
   const leafletRef = useRef<any>(null);
   const radarTileRef = useRef<any>(null);
+  const satelliteTileRef = useRef<any>(null);
+  const cloudRingRef = useRef<any>(null);
+  const boundsFittedForMapRef = useRef(-1);
   const [mapReady, setMapReady] = useState(0);
 
   useEffect(() => {
@@ -142,6 +146,8 @@ export default function CircuitMap({
         markersLayerRef.current = null;
         precipLayerRef.current = null;
         radarTileRef.current = null;
+        satelliteTileRef.current = null;
+        cloudRingRef.current = null;
       }
 
       if (!mapRef.current) return;
@@ -182,10 +188,30 @@ export default function CircuitMap({
         dashArray: "4,8",
       }).addTo(map);
 
-      // RainViewer weather radar tile layer (free, no API key)
+      // RainViewer weather radar + satellite IR tile layers (free, no API key)
       try {
         const res = await fetch("https://api.rainviewer.com/public/weather-maps.json");
         const data = await res.json();
+
+        // Satellite infrared (cloud imagery) — rendered below radar
+        // IR tiles exist only at low zoom levels (0-3); Leaflet up-scales them to fill
+        // the viewport, giving a full-screen cloud coverage overlay.
+        const irFrames = data?.satellite?.infrared;
+        if (irFrames && irFrames.length > 0) {
+          const latestIR = irFrames[irFrames.length - 1].path;
+          satelliteTileRef.current = L.tileLayer(
+            `https://tilecache.rainviewer.com${latestIR}/512/{z}/{x}/{y}/0/0_0.png`,
+            {
+              opacity: 0.45,
+              zIndex: 8,
+              tileSize: 512,
+              maxNativeZoom: 3,
+              maxZoom: 19,
+            }
+          ).addTo(map);
+        }
+
+        // Precipitation radar — rendered above satellite
         const pastFrames = data?.radar?.past;
         if (pastFrames && pastFrames.length > 0) {
           const latestPath = pastFrames[pastFrames.length - 1].path;
@@ -202,7 +228,7 @@ export default function CircuitMap({
           ).addTo(map);
         }
       } catch {
-        // RainViewer unavailable — skip radar layer gracefully
+        // RainViewer unavailable — skip layers gracefully
       }
 
       precipLayerRef.current = L.layerGroup().addTo(map);
@@ -221,9 +247,35 @@ export default function CircuitMap({
         markersLayerRef.current = null;
         precipLayerRef.current = null;
         radarTileRef.current = null;
+        satelliteTileRef.current = null;
+        cloudRingRef.current = null;
       }
     };
   }, [circuit]);
+
+  // currentForecast must be declared before useMemo that depends on it
+  const currentForecast = windForecast[Math.min(selectedHourIndex, windForecast.length - 1)];
+
+  // Cloud particle animation — CSS-driven dots that drift in wind direction
+  const cloudParticles = useMemo(() => {
+    if (!currentForecast) return [];
+    const speed = currentForecast.speed_kmh ?? 0;
+    const dir = currentForecast.direction_deg ?? 0;
+    const cloudPct = currentForecast.cloud_cover_pct ?? 0;
+    if (cloudPct < 10 || speed < 1) return [];
+    const windToDeg = (dir + 180) % 360;
+    const count = Math.min(18, Math.max(4, Math.floor(cloudPct / 8)));
+    const durationSec = Math.max(6, 40 - speed * 0.6);
+    return Array.from({ length: count }, (_, i) => {
+      // golden-angle spread so particles don't clump
+      const startX = ((Math.sin(i * 2.39996) * 0.5 + 0.5) * 100);
+      const startY = ((Math.cos(i * 2.39996) * 0.5 + 0.5) * 100);
+      const delay = -((i / count) * durationSec); // negative = already in progress
+      const size = 8 + (i % 4) * 5;
+      const opacity = 0.10 + (cloudPct / 100) * 0.20;
+      return { startX, startY, delay, size, opacity, windToDeg, durationSec };
+    });
+  }, [currentForecast]);
 
   // Update wind markers + precipitation overlay when time changes
   useEffect(() => {
@@ -233,88 +285,102 @@ export default function CircuitMap({
     const precipLayer = precipLayerRef.current;
     if (!L || !map || !markersLayer || !precipLayer) return;
 
-    if (corners.length > 1) {
+    // Fit bounds only on the first render after map initialisation — not on every
+    // slider tick.  boundsFittedForMapRef tracks which mapReady generation we've
+    // already fitted so re-running this effect (on selectedHourIndex changes) is a no-op.
+    if (corners.length > 1 && boundsFittedForMapRef.current !== mapReady) {
       const bounds = L.latLngBounds(
         corners.map((c: CircuitCorner) => [c.lat, c.lng] as [number, number])
       );
       bounds.extend([circuit.latitude, circuit.longitude]);
       map.fitBounds(bounds.pad(0.5));
+      boundsFittedForMapRef.current = mapReady;
     }
 
     markersLayer.clearLayers();
     precipLayer.clearLayers();
 
-    if (!windForecast.length || !corners.length) return;
-
     const idx = Math.min(selectedHourIndex, windForecast.length - 1);
     const forecast = windForecast[idx];
+
+    // Update cloud cover ring opacity based on current forecast
+    const cloudPct = forecast?.cloud_cover_pct ?? 0;
+    if (cloudRingRef.current) {
+      cloudRingRef.current.setStyle({ fillOpacity: (cloudPct / 100) * 0.18, opacity: (cloudPct / 100) * 0.25 });
+    } else {
+      cloudRingRef.current = L.circle([circuit.latitude, circuit.longitude], {
+        radius: 45000,
+        fillColor: "#adb8c4",
+        fillOpacity: (cloudPct / 100) * 0.18,
+        color: "#adb8c4",
+        weight: 1,
+        opacity: (cloudPct / 100) * 0.25,
+        dashArray: "2,6",
+        interactive: false,
+      }).addTo(map);
+    }
+
+    if (!windForecast.length || !corners.length) return;
     if (!forecast) return;
 
     const windSpeed = forecast.speed_kmh;
     const windDir = forecast.direction_deg;
     const cosLat = Math.cos(circuit.latitude * Math.PI / 180);
 
-    // Cloud/wind movement arrow — large arrow showing wind direction across the map
+    // Large wind flow arrow — spans the whole map, shows the uniform wind direction clearly.
+    // Multiple parallel lines give a "flow field" look so it's obvious all corners share
+    // the same wind, only the head/tail component differs per corner bearing.
     if (windSpeed > 1) {
-      const arrowLen = Math.min(0.06, 0.02 + windSpeed * 0.001); // degrees offset
       const windToRad = ((windDir + 180) % 360) * Math.PI / 180;
-      // Arrow starts upwind of circuit, ends downwind
-      const startLat = circuit.latitude - Math.cos(windToRad) * arrowLen;
-      const startLng = circuit.longitude - (Math.sin(windToRad) * arrowLen) / cosLat;
-      const endLat = circuit.latitude + Math.cos(windToRad) * arrowLen;
-      const endLng = circuit.longitude + (Math.sin(windToRad) * arrowLen) / cosLat;
-
-      // Arrow color based on speed
       const arrowColor = windSpeed > 40 ? "#c96060" : windSpeed > 20 ? "#d9af42" : "#6a8a9a";
-      const arrowOpacity = Math.min(0.6, 0.2 + windSpeed * 0.01);
+      const baseOpacity = Math.min(0.55, 0.18 + windSpeed * 0.009);
+      const arrowLen = Math.min(0.10, 0.04 + windSpeed * 0.0015);
 
-      L.polyline([[startLat, startLng], [endLat, endLng]], {
-        color: arrowColor,
-        weight: 2,
-        opacity: arrowOpacity,
-        dashArray: "8,4",
-      }).addTo(precipLayer);
+      // Draw 3 parallel flow lines (offset perpendicular to wind direction)
+      const perpRad = windToRad + Math.PI / 2;
+      const offsets = [-0.018, 0, 0.018];
+      offsets.forEach((off) => {
+        const offLat = Math.cos(perpRad) * off;
+        const offLng = (Math.sin(perpRad) * off) / cosLat;
+        const sLat = circuit.latitude - Math.cos(windToRad) * arrowLen + offLat;
+        const sLng = circuit.longitude - Math.sin(windToRad) * arrowLen / cosLat + offLng;
+        const eLat = circuit.latitude + Math.cos(windToRad) * arrowLen + offLat;
+        const eLng = circuit.longitude + Math.sin(windToRad) * arrowLen / cosLat + offLng;
 
-      // Arrowhead at end
-      const headSize = arrowLen * 0.35;
-      const headAngle1 = windToRad + 2.6; // ~150 degrees
-      const headAngle2 = windToRad - 2.6;
-      const head1Lat = endLat + Math.cos(headAngle1) * headSize;
-      const head1Lng = endLng + (Math.sin(headAngle1) * headSize) / cosLat;
-      const head2Lat = endLat + Math.cos(headAngle2) * headSize;
-      const head2Lng = endLng + (Math.sin(headAngle2) * headSize) / cosLat;
+        L.polyline([[sLat, sLng], [eLat, eLng]], {
+          color: arrowColor,
+          weight: off === 0 ? 2.5 : 1.2,
+          opacity: off === 0 ? baseOpacity : baseOpacity * 0.5,
+          dashArray: "10,5",
+        }).addTo(precipLayer);
 
-      L.polyline([[head1Lat, head1Lng], [endLat, endLng], [head2Lat, head2Lng]], {
-        color: arrowColor,
-        weight: 2,
-        opacity: arrowOpacity,
-      }).addTo(precipLayer);
+        // Arrowhead only on centre line
+        if (off === 0) {
+          const headSize = arrowLen * 0.28;
+          const h1Lat = eLat + Math.cos(windToRad + 2.6) * headSize;
+          const h1Lng = eLng + Math.sin(windToRad + 2.6) * headSize / cosLat;
+          const h2Lat = eLat + Math.cos(windToRad - 2.6) * headSize;
+          const h2Lng = eLng + Math.sin(windToRad - 2.6) * headSize / cosLat;
+          L.polyline([[h1Lat, h1Lng], [eLat, eLng], [h2Lat, h2Lng]], {
+            color: arrowColor, weight: 2.5, opacity: baseOpacity,
+          }).addTo(precipLayer);
 
-      // Wind speed label at midpoint
-      const midLat = (startLat + endLat) / 2;
-      const midLng = (startLng + endLng) / 2;
-      // Offset label perpendicular to wind direction
-      const perpLat = midLat + Math.cos(windToRad + Math.PI / 2) * arrowLen * 0.3;
-      const perpLng = midLng + (Math.sin(windToRad + Math.PI / 2) * arrowLen * 0.3) / cosLat;
-
-      const windLabel = L.divIcon({
-        html: `<div style="
-          font-family:Inter,system-ui,sans-serif;
-          font-size:9px;
-          font-weight:600;
-          color:${arrowColor};
-          background:rgba(11,10,14,0.85);
-          padding:1px 5px;
-          border-radius:3px;
-          white-space:nowrap;
-          border:1px solid ${arrowColor}30;
-          letter-spacing:0.5px;
-        ">${Math.round(windSpeed)} km/h ${forecast.direction_label}</div>`,
-        className: "wind-direction-label",
-        iconSize: [80, 20],
-        iconAnchor: [40, 10],
+          // Speed label offset perpendicular from centre arrow
+          const midLat = (sLat + eLat) / 2;
+          const midLng = (sLng + eLng) / 2;
+          const lblLat = midLat + Math.cos(perpRad) * arrowLen * 0.25;
+          const lblLng = midLng + (Math.sin(perpRad) * arrowLen * 0.25) / cosLat;
+          L.marker([lblLat, lblLng], {
+            icon: L.divIcon({
+              html: `<div style="font-family:Inter,system-ui,sans-serif;font-size:9px;font-weight:700;color:${arrowColor};background:rgba(11,10,14,0.88);padding:2px 6px;border-radius:3px;white-space:nowrap;border:1px solid ${arrowColor}35;letter-spacing:0.5px;">${Math.round(windSpeed)} km/h ${forecast.direction_label}</div>`,
+              className: "",
+              iconSize: [90, 20],
+              iconAnchor: [45, 10],
+            }),
+            interactive: false,
+          }).addTo(precipLayer);
+        }
       });
-      L.marker([perpLat, perpLng], { icon: windLabel, interactive: false }).addTo(precipLayer);
     }
 
     // Wind corner markers
@@ -357,11 +423,12 @@ export default function CircuitMap({
     });
   }, [mapReady, corners, windForecast, selectedHourIndex, circuit.latitude, circuit.longitude]);
 
-  // Get current forecast for precipitation badge
-  const currentForecast = windForecast[Math.min(selectedHourIndex, windForecast.length - 1)];
+  // Derived values for precipitation + cloud badges
   const intensity = currentForecast?.precipitation_intensity ?? 0;
   const probability = currentForecast?.precipitation_probability ?? 0;
   const condition = currentForecast?.track_condition ?? "dry";
+
+  const cloudPctDisplay = currentForecast?.cloud_cover_pct ?? null;
 
   return (
     <div
@@ -423,12 +490,66 @@ export default function CircuitMap({
               Cross
             </span>
           </div>
+          {/* Cloud cover badge */}
+          {cloudPctDisplay !== null && (
+            <div className="flex items-center gap-1 text-[8px] text-[var(--text-muted)]">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+              </svg>
+              <span style={{ color: cloudPctDisplay > 75 ? "#adb8c4" : "var(--text-muted)" }}>
+                {Math.round(cloudPctDisplay)}%
+              </span>
+            </div>
+          )}
           <span className="text-[9px] text-[var(--text-muted)] font-mono">
             {corners.length > 1 ? `${corners.length} pts` : "50km"}
           </span>
         </div>
       </div>
-      <div ref={mapRef} style={{ height: "380px", width: "100%" }} />
+      {/* Map container with cloud particle overlay */}
+      <div style={{ position: "relative", height: "380px", width: "100%" }}>
+        <div ref={mapRef} style={{ height: "100%", width: "100%" }} />
+        {/* Cloud drift particles — pointer-events:none so they don't block map interaction */}
+        {cloudParticles.length > 0 && (
+          <div
+            ref={particleContainerRef}
+            style={{
+              position: "absolute",
+              inset: 0,
+              overflow: "hidden",
+              pointerEvents: "none",
+              zIndex: 500,
+            }}
+          >
+            {/* Per-particle named keyframes — CSS custom properties don't work inside
+                @keyframes transform in Chrome, so we generate unique names per particle */}
+            <style>{cloudParticles.map((p, i) => {
+              const rad = (p.windToDeg * Math.PI) / 180;
+              const travel = 30 + (p.size / 28) * 20;
+              const dx = (Math.sin(rad) * travel).toFixed(1);
+              const dy = (-Math.cos(rad) * travel).toFixed(1);
+              return `@keyframes cp${i}{0%{transform:translate(0,0) scale(1);opacity:${p.opacity.toFixed(3)}}50%{opacity:${(p.opacity * 1.4).toFixed(3)}}100%{transform:translate(${dx}%,${dy}%) scale(0.6);opacity:0}}`;
+            }).join("\n")}</style>
+            {cloudParticles.map((p, i) => (
+              <div
+                key={i}
+                style={{
+                  position: "absolute",
+                  left: `${p.startX}%`,
+                  top: `${p.startY}%`,
+                  width: `${p.size}px`,
+                  height: `${p.size * 0.6}px`,
+                  borderRadius: "50%",
+                  background: "rgba(190,205,218,0.95)",
+                  filter: `blur(${p.size * 0.4}px)`,
+                  animation: `cp${i} ${p.durationSec}s ${p.delay}s linear infinite`,
+                  willChange: "transform, opacity",
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
