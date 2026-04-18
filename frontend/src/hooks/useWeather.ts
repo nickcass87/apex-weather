@@ -131,23 +131,59 @@ export function useWeather(circuitId: string | null, circuit?: Circuit | null) {
         }
       }
 
-      // Override forecast data with Tomorrow.io hourly data when available.
-      if (tomorrowData?.forecast?.length && weatherData.forecast?.length) {
-        tomorrowData.forecast.forEach((tp, i) => {
-          if (i < weatherData.forecast.length) {
-            const fp = weatherData.forecast[i];
-            if (tp.temperature_c != null) fp.temperature_c = tp.temperature_c as number;
-            if (tp.humidity_pct != null) fp.humidity_pct = tp.humidity_pct as number;
-            if (tp.wind_speed_kmh != null) fp.wind_speed_kmh = tp.wind_speed_kmh as number;
-            if (tp.wind_direction_deg != null) fp.wind_direction_deg = tp.wind_direction_deg as number;
-            // Always override precipitation — 0 from Tomorrow.io beats stale Render values
-            fp.precipitation_probability = (tp.precipitation_probability as number) ?? 0;
-            fp.precipitation_intensity = (tp.precipitation_intensity as number) ?? 0;
-            // Clear precip_type if no precipitation
-            if (fp.precipitation_intensity === 0) fp.precip_type = 0;
-            if (tp.cloud_cover_pct != null) fp.cloud_cover_pct = tp.cloud_cover_pct as number;
+      // Override ALL stale Render forecast/condition data with Tomorrow.io values.
+      if (tomorrowData?.forecast?.length) {
+        // Build a map of hour-index → Tomorrow.io precip/temp for fast lookup
+        const tMap = new Map(tomorrowData.forecast.map((tp, i) => [i, tp]));
+
+        // 1. weather.forecast — temperature, wind, precipitation
+        weatherData.forecast?.forEach((fp, i) => {
+          const tp = tMap.get(i);
+          if (!tp) return;
+          if (tp.temperature_c != null) fp.temperature_c = tp.temperature_c as number;
+          if (tp.humidity_pct != null) fp.humidity_pct = tp.humidity_pct as number;
+          if (tp.wind_speed_kmh != null) fp.wind_speed_kmh = tp.wind_speed_kmh as number;
+          if (tp.wind_direction_deg != null) fp.wind_direction_deg = tp.wind_direction_deg as number;
+          if (tp.cloud_cover_pct != null) fp.cloud_cover_pct = tp.cloud_cover_pct as number;
+          fp.precipitation_probability = (tp.precipitation_probability as number) ?? 0;
+          fp.precipitation_intensity = (tp.precipitation_intensity as number) ?? 0;
+          if (fp.precipitation_intensity === 0) fp.precip_type = 0;
+        });
+
+        // 2. wind_forecast — clears DRIZZLE badge and track_condition in the wind map
+        weatherData.wind_forecast?.forEach((wf, i) => {
+          const tp = tMap.get(i);
+          if (!tp) return;
+          wf.precipitation_intensity = (tp.precipitation_intensity as number) ?? 0;
+          wf.precipitation_probability = (tp.precipitation_probability as number) ?? 0;
+          // Recompute track_condition: if no precip → dry
+          if (wf.precipitation_intensity === 0 && wf.precipitation_probability < 20) {
+            wf.track_condition = "dry";
           }
         });
+
+        // 3. track_conditions — drives Surface Conditions panel (DAMP/WET/DRY)
+        weatherData.track_conditions?.forEach((tc, i) => {
+          const tp = tMap.get(i);
+          if (!tp) return;
+          tc.precipitation_intensity = (tp.precipitation_intensity as number) ?? 0;
+          if (tc.precipitation_intensity === 0) {
+            tc.accumulated_rain_mm = 0;
+            tc.condition = "dry";
+          }
+        });
+
+        // 4. drying_estimate — if Tomorrow.io shows no rain and no recent accumulation, clear it
+        const anyRain = tomorrowData.forecast.some(
+          (tp) => ((tp.precipitation_intensity as number) ?? 0) > 0.05
+        );
+        if (!anyRain && (tomorrowData.current?.precipitation_intensity ?? 0) === 0) {
+          if (weatherData.drying_estimate) {
+            weatherData.drying_estimate.condition = "dry";
+            weatherData.drying_estimate.water_depth_mm = 0;
+            weatherData.drying_estimate.drying_rate_mm_hr = 0;
+          }
+        }
       }
 
       setWeather(weatherData);
