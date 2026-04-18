@@ -100,8 +100,9 @@ export function useWeather(circuitId: string | null, circuit?: Circuit | null) {
         if (t.wind_speed_kmh != null) c.wind_speed_kmh = t.wind_speed_kmh;
         if (t.wind_direction_deg != null) c.wind_direction_deg = t.wind_direction_deg;
         if (t.wind_gust_kmh != null) c.wind_gust_kmh = t.wind_gust_kmh;
-        if (t.precipitation_intensity != null) c.precipitation_intensity = t.precipitation_intensity;
-        if (t.precipitation_probability != null) c.precipitation_probability = t.precipitation_probability;
+        // Always set precipitation from Tomorrow.io (use 0 if null — null means no rain)
+        c.precipitation_intensity = t.precipitation_intensity ?? 0;
+        c.precipitation_probability = t.precipitation_probability ?? 0;
         if (t.cloud_cover_pct != null) c.cloud_cover_pct = t.cloud_cover_pct;
         if (t.pressure_hpa != null) c.pressure_hpa = t.pressure_hpa;
         if (t.uv_index != null) c.uv_index = t.uv_index;
@@ -109,6 +110,25 @@ export function useWeather(circuitId: string | null, circuit?: Circuit | null) {
         if (t.weather_code != null) c.weather_code = t.weather_code;
         if (t.observed_at) c.observed_at = t.observed_at as string;
         if (t.visibility_km != null) c.visibility_km = t.visibility_km;
+
+        // Recompute rain_eta from Tomorrow.io forecast probability.
+        // If Tomorrow.io shows 0% probability now, override stale Render estimate.
+        if ((t.precipitation_probability ?? 0) === 0 && (t.precipitation_intensity ?? 0) === 0) {
+          // Find first forecast hour with >30% probability as ETA
+          const fcHours = tomorrowData.forecast ?? [];
+          let etaMinutes: number | null = null;
+          const now = Date.now();
+          for (const fp of fcHours) {
+            const prob = (fp.precipitation_probability as number) ?? 0;
+            const intensity = (fp.precipitation_intensity as number) ?? 0;
+            if (prob > 30 || intensity > 0.1) {
+              const forecastMs = new Date(fp.forecast_time as string).getTime();
+              etaMinutes = Math.max(0, (forecastMs - now) / 60000);
+              break;
+            }
+          }
+          c.rain_eta_minutes = etaMinutes;
+        }
       }
 
       // Override forecast data with Tomorrow.io hourly data when available.
@@ -120,8 +140,11 @@ export function useWeather(circuitId: string | null, circuit?: Circuit | null) {
             if (tp.humidity_pct != null) fp.humidity_pct = tp.humidity_pct as number;
             if (tp.wind_speed_kmh != null) fp.wind_speed_kmh = tp.wind_speed_kmh as number;
             if (tp.wind_direction_deg != null) fp.wind_direction_deg = tp.wind_direction_deg as number;
-            if (tp.precipitation_probability != null) fp.precipitation_probability = tp.precipitation_probability as number;
-            if (tp.precipitation_intensity != null) fp.precipitation_intensity = tp.precipitation_intensity as number;
+            // Always override precipitation — 0 from Tomorrow.io beats stale Render values
+            fp.precipitation_probability = (tp.precipitation_probability as number) ?? 0;
+            fp.precipitation_intensity = (tp.precipitation_intensity as number) ?? 0;
+            // Clear precip_type if no precipitation
+            if (fp.precipitation_intensity === 0) fp.precip_type = 0;
             if (tp.cloud_cover_pct != null) fp.cloud_cover_pct = tp.cloud_cover_pct as number;
           }
         });
