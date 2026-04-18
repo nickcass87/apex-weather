@@ -126,30 +126,27 @@ async def get_weather(circuit_id: str, db: Session = Depends(get_db)):
 
     surface = circuit.surface_type or "standard_asphalt"
 
-    # Imola → Tomorrow.io (highest accuracy, live).
-    # All other circuits → Open-Meteo ECMWF IFS (real NWP, free, no API key).
-    # No circuit ever receives random/synthetic data.
-    is_imola = "Imola" in (circuit.name or "")
+    # All circuits → Tomorrow.io (live, accurate).
+    # Open-Meteo ECMWF is fallback only if Tomorrow.io is unavailable.
     use_demo = False
 
-    if is_imola and not weather_service.is_demo_mode:
+    if not weather_service.is_demo_mode:
         try:
             current = await weather_service.get_current_weather(circuit.latitude, circuit.longitude)
             forecast_data = await weather_service.get_forecast(circuit.latitude, circuit.longitude, hours=24)
         except Exception as e:
-            # Tomorrow.io unavailable (rate limit / outage) — fall back to Open-Meteo
             logger.warning("Tomorrow.io unavailable for %s, falling back to Open-Meteo: %s", circuit.name, e)
-            current, forecast_data = await fetch_real_weather(circuit.latitude, circuit.longitude, hours=24)
+            try:
+                current, forecast_data = await fetch_real_weather(circuit.latitude, circuit.longitude, hours=24)
+            except Exception as e2:
+                logger.warning("Open-Meteo also unavailable for %s: %s", circuit.name, e2)
+                current = WeatherService._generate_demo_current(circuit.latitude, circuit.longitude)
+                forecast_data = WeatherService._generate_demo_forecast(circuit.latitude, circuit.longitude, 24)
+                use_demo = True
     else:
-        # All other circuits: use real ECMWF IFS forecast from Open-Meteo (free, no key)
-        try:
-            current, forecast_data = await fetch_real_weather(circuit.latitude, circuit.longitude, hours=24)
-        except Exception as e:
-            logger.warning("Open-Meteo unavailable for %s: %s", circuit.name, e)
-            # Last-resort fallback only — smooth synthetic data, never random
-            current = WeatherService._generate_demo_current(circuit.latitude, circuit.longitude)
-            forecast_data = WeatherService._generate_demo_forecast(circuit.latitude, circuit.longitude, 24)
-            use_demo = True
+        current = WeatherService._generate_demo_current(circuit.latitude, circuit.longitude)
+        forecast_data = WeatherService._generate_demo_forecast(circuit.latitude, circuit.longitude, 24)
+        use_demo = True
 
     # Physical consistency corrections — weather APIs sometimes return internally
     # inconsistent data (e.g. rain with clear-sky cloud cover or high UV index).
