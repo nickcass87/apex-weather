@@ -55,6 +55,18 @@ async function fetchMultiModelDirect(latitude: number, longitude: number): Promi
   return { fetched_at: new Date().toISOString(), models };
 }
 
+/** Fetch current + forecast directly from Tomorrow.io via the Next.js server route.
+ *  This bypasses the Render backend, ensuring live accurate data at all times. */
+async function fetchTomorrowDirect(lat: number, lon: number): Promise<{ current: Partial<WeatherResponse["current"]>; forecast: WeatherResponse["forecast"] } | null> {
+  try {
+    const res = await fetch(`/api/tomorrow-current?lat=${lat}&lon=${lon}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
 export function useWeather(circuitId: string | null, circuit?: Circuit | null) {
   const [weather, setWeather] = useState<WeatherResponse | null>(null);
   const [modelComparison, setModelComparison] = useState<ModelComparisonResponse | null>(null);
@@ -68,11 +80,53 @@ export function useWeather(circuitId: string | null, circuit?: Circuit | null) {
     setLoading(true);
     setError(null);
     try {
-      const [weatherData, nowcastData, calibrationData] = await Promise.all([
+      // Fetch Render backend data (algorithms, track conditions, grip, etc.)
+      // and direct Tomorrow.io data (accurate current conditions) in parallel.
+      const [weatherData, tomorrowData, nowcastData, calibrationData] = await Promise.all([
         getWeather(circuitId),
+        circuit?.latitude && circuit?.longitude
+          ? fetchTomorrowDirect(circuit.latitude, circuit.longitude)
+          : Promise.resolve(null),
         getNowcast(circuitId).catch(() => null),
         getCalibration(circuitId).catch(() => null),
       ]);
+
+      // Override stale Render current conditions with live Tomorrow.io values.
+      if (tomorrowData?.current && weatherData.current) {
+        const t = tomorrowData.current as Partial<typeof weatherData.current>;
+        const c = weatherData.current;
+        if (t.temperature_c != null) c.temperature_c = t.temperature_c;
+        if (t.humidity_pct != null) c.humidity_pct = t.humidity_pct;
+        if (t.wind_speed_kmh != null) c.wind_speed_kmh = t.wind_speed_kmh;
+        if (t.wind_direction_deg != null) c.wind_direction_deg = t.wind_direction_deg;
+        if (t.wind_gust_kmh != null) c.wind_gust_kmh = t.wind_gust_kmh;
+        if (t.precipitation_intensity != null) c.precipitation_intensity = t.precipitation_intensity;
+        if (t.precipitation_probability != null) c.precipitation_probability = t.precipitation_probability;
+        if (t.cloud_cover_pct != null) c.cloud_cover_pct = t.cloud_cover_pct;
+        if (t.pressure_hpa != null) c.pressure_hpa = t.pressure_hpa;
+        if (t.uv_index != null) c.uv_index = t.uv_index;
+        if (t.dew_point_c != null) c.dew_point_c = t.dew_point_c;
+        if (t.weather_code != null) c.weather_code = t.weather_code;
+        if (t.observed_at) c.observed_at = t.observed_at as string;
+        if (t.visibility_km != null) c.visibility_km = t.visibility_km;
+      }
+
+      // Override forecast data with Tomorrow.io hourly data when available.
+      if (tomorrowData?.forecast?.length && weatherData.forecast?.length) {
+        tomorrowData.forecast.forEach((tp, i) => {
+          if (i < weatherData.forecast.length) {
+            const fp = weatherData.forecast[i];
+            if (tp.temperature_c != null) fp.temperature_c = tp.temperature_c as number;
+            if (tp.humidity_pct != null) fp.humidity_pct = tp.humidity_pct as number;
+            if (tp.wind_speed_kmh != null) fp.wind_speed_kmh = tp.wind_speed_kmh as number;
+            if (tp.wind_direction_deg != null) fp.wind_direction_deg = tp.wind_direction_deg as number;
+            if (tp.precipitation_probability != null) fp.precipitation_probability = tp.precipitation_probability as number;
+            if (tp.precipitation_intensity != null) fp.precipitation_intensity = tp.precipitation_intensity as number;
+            if (tp.cloud_cover_pct != null) fp.cloud_cover_pct = tp.cloud_cover_pct as number;
+          }
+        });
+      }
+
       setWeather(weatherData);
       if (nowcastData) setNowcast(nowcastData);
       if (calibrationData) setCalibration(calibrationData);
@@ -81,7 +135,7 @@ export function useWeather(circuitId: string | null, circuit?: Circuit | null) {
     } finally {
       setLoading(false);
     }
-  }, [circuitId]);
+  }, [circuitId, circuit?.latitude, circuit?.longitude]);
 
   // Fetch model comparison directly from Open-Meteo whenever circuit changes.
   // Open-Meteo explicitly supports browser CORS — no backend proxy needed.
