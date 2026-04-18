@@ -25,6 +25,19 @@ function rainEtaDisplay(minutes: number | null, intensity: number | null): strin
   return `${hours}h ${mins}m`;
 }
 
+/** Stull's empirical wet-bulb formula — matches the Python backend implementation. */
+function computeWetBulb(tempC: number, humidityPct: number): number {
+  const t = tempC;
+  const rh = humidityPct;
+  return (
+    t * Math.atan(0.151977 * Math.pow(rh + 8.313659, 0.5)) +
+    Math.atan(t + rh) -
+    Math.atan(rh - 1.676331) +
+    0.00391838 * Math.pow(rh, 1.5) * Math.atan(0.023101 * rh) -
+    4.686035
+  );
+}
+
 function pressureTrendArrow(trend: string | null): string {
   if (trend === "rising") return "↑";
   if (trend === "falling") return "↓";
@@ -72,6 +85,18 @@ function Tile({
 }
 
 export default function WeatherTiles({ weather }: Props) {
+  // Compute wet bulb and dew spread client-side as fallback when backend returns null
+  const wetBulb =
+    weather.wet_bulb_c ??
+    (weather.temperature_c != null && weather.humidity_pct != null
+      ? computeWetBulb(weather.temperature_c, weather.humidity_pct)
+      : null);
+  const dewSpread =
+    weather.dew_point_spread_c ??
+    (weather.temperature_c != null && weather.dew_point_c != null
+      ? weather.temperature_c - weather.dew_point_c
+      : null);
+
   const isActiveRain = (weather.precipitation_intensity ?? 0) >= 0.3;
   const rainColor =
     isActiveRain
@@ -139,15 +164,15 @@ export default function WeatherTiles({ weather }: Props) {
       />
       <Tile
         label="Wet Bulb"
-        value={weather.wet_bulb_c?.toFixed(1) ?? "--"}
+        value={wetBulb != null ? wetBulb.toFixed(1) : "--"}
         unit="°C"
         accentColor="var(--accent-blue)"
       />
       <Tile
         label="Dew Spread"
-        value={weather.dew_point_spread_c?.toFixed(1) ?? "--"}
+        value={dewSpread != null ? dewSpread.toFixed(1) : "--"}
         unit="°C"
-        accentColor={(weather.dew_point_spread_c ?? 99) < 3 ? "var(--accent-red)" : undefined}
+        accentColor={(dewSpread ?? 99) < 3 ? "var(--accent-red)" : undefined}
       />
     </div>
   );
